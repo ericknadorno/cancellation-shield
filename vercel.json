@@ -1,9 +1,6 @@
 {
   "functions": {
-    "api/upload.js": {
-      "maxDuration": 30,
-      "memory": 1024
-    }
+    "api/upload.js": { "maxDuration": 60, "memory": 1024 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
