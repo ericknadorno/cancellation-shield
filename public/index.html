@@ -207,12 +207,11 @@ async function processFiles(){
     st.umsg=`A processar ${filesDone}/${pendingFiles.length}: ${pf.name}`;render();
     try{
       if(pf.type==="duve"){
-        const text=await pf.file.text();
+        const text=pf.text||new TextDecoder().decode(pf.buf);
         results.duve=parseDuve(text);
         results.logs.push(`✅ Duve: ${Object.keys(results.duve).length} records`);
       }else{
-        const buf=await pf.file.arrayBuffer();
-        const wb=XLSX.read(buf,{cellDates:true});
+        const wb=XLSX.read(pf.buf,{cellDates:true});
         if(pf.type==="reservation"){
           const{prop,res,err,total,active}=parseRes(wb);
           if(err){results.logs.push(`❌ ${pf.name}: ${err}`);continue}
@@ -275,9 +274,14 @@ async function processFiles(){
   addLog(`Dashboard loaded: ${scored.length} reservations, ${ob.length} OB days`);
 }
 
-function addFiles(type,e){
+async function addFiles(type,e){
   const files=Array.from(e.target.files);
-  for(const f of files)pendingFiles.push({file:f,name:f.name,type});
+  for(const f of files){
+    try{
+      const buf=await f.arrayBuffer();
+      pendingFiles.push({buf,name:f.name,type,text:type==="duve"?new TextDecoder().decode(buf):null});
+    }catch(err){console.error("Read error:",f.name,err)}
+  }
   render();
 }
 
@@ -371,7 +375,8 @@ function rupload(){
   h+=`<label class="up-box${aC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${aC?"✅":"📊"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Availability Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${aC?aC+" ficheiro(s)":"Mews .xlsx (1/prop)"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('availability',event)" style="display:none"></label>`;
   h+=`<label class="up-box${dC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${dC?"✅":"👤"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Duve Export</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${dC?"1 ficheiro":"CSV (opcional)"}</div><input type="file" accept=".csv" onchange="addFiles('duve',event)" style="display:none"></label>`;
   h+=`</div>`;
-  h+=`<button class="up-btn" onclick="processFiles()" ${rC&&!st.uping?"":"disabled"}>${st.uping?"⏳ "+st.umsg:"🚀 Processar (${pendingFiles.length} ficheiros)"}</button>`;
+  const btnText=st.uping?"⏳ "+st.umsg:"🚀 Processar ("+pendingFiles.length+" ficheiros)";
+  h+=`<button class="up-btn" onclick="processFiles()" ${rC&&!st.uping?"":"disabled"}>${btnText}</button>`;
   if(st.umsg&&!st.uping)h+=`<div class="msg ${st.umsg.includes("❌")?"err":"ok"}">${st.umsg}</div>`;
   // Show processing log
   if(D.log.length){h+=`<div style="margin-top:16px;text-align:left;background:#12162a;border-radius:6px;padding:10px;font-size:9px;max-height:150px;overflow-y:auto">`;D.log.forEach(l=>{h+=`<div style="color:${l.includes("❌")?"#ef4444":"#22c55e"};margin-bottom:2px">${l}</div>`});h+=`</div>`}
