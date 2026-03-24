@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cancellation Shield v7 — The Haus Group</title>
+<title>Cancellation Shield v8 — The Haus Group</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
@@ -15,7 +16,7 @@ body{font-family:'JetBrains Mono',monospace;background:#0c0f1a;color:#c8d0e0;ove
 .btns{display:flex;gap:4px}.btn{padding:5px 12px;border-radius:5px;border:1px solid #1e2545;background:#12162a;color:#4a5280;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
 .btn.on{border-color:#4f6ef7;background:#1e3a8a;color:#93b4ff}.btn.warn{border-color:#f59e0b30;color:#f59e0b}
 .status{padding:6px 20px;background:#0e1125;border-bottom:1px solid #1e2545;font-size:9px;color:#4a5280;display:flex;align-items:center;gap:8px}
-.dot{width:6px;height:6px;border-radius:50%;background:#22c55e}
+.dot{width:6px;height:6px;border-radius:50%}
 .kpis{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid #1e2545}
 .kpi{padding:10px 12px;text-align:center}.kpi label{font-size:8px;color:#4a5280;font-weight:700;letter-spacing:1.5px;display:block;margin-bottom:2px}
 .kpi b{font-size:22px;font-weight:900;line-height:1.1;display:block}.kpi small{font-size:9px;color:#3a4270;display:block;margin-top:1px}
@@ -36,11 +37,10 @@ body{font-family:'JetBrains Mono',monospace;background:#0c0f1a;color:#c8d0e0;ove
 .tbl table{width:100%;background:#12162a;border-radius:6px;border:1px solid #1e2545;border-collapse:collapse}
 .tbl th{padding:6px 8px;border-bottom:1px solid #1e2545;font-size:8px;font-weight:800;color:#3a4270;letter-spacing:1px;text-align:left}
 .tbl td{padding:4px 8px;border-bottom:1px solid #1e254530;font-size:10px}
-.tbl tr:hover{background:rgba(79,110,247,.06)}
-.tbl tr{cursor:pointer}
+.tbl tr:hover{background:rgba(79,110,247,.06)}.tbl tr{cursor:pointer}
 .legend{display:flex;gap:14px;padding:6px 12px;border-top:1px solid #1e2545;font-size:9px;position:sticky;left:0}
 .legend span{display:flex;align-items:center;gap:4px;color:#4a5280}.legend i{width:10px;height:10px;border-radius:2px;display:inline-block;font-style:normal}
-.panel{width:340px;border-left:1px solid #1e2545;background:#12162a;overflow-y:auto;max-height:calc(100vh-158px);flex-shrink:0}
+.panel{width:340px;border-left:1px solid #1e2545;background:#12162a;overflow-y:auto;max-height:calc(100vh - 158px);flex-shrink:0}
 .panel h2{font-size:14px;font-weight:800;color:#f0f4ff}.panel h3{font-size:10px;color:#4a5280}
 .panel .risk{margin:12px;padding:14px;border-radius:6px}
 .panel .sc{font-size:26px;font-weight:900}.panel .lv{font-size:11px;margin-left:8px;font-weight:800}
@@ -48,171 +48,346 @@ body{font-family:'JetBrains Mono',monospace;background:#0c0f1a;color:#c8d0e0;ove
 .panel .row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e254520;font-size:10px}
 .panel .row label{color:#4a5280}.panel .row span{color:#c8d0e0;font-weight:500;text-align:right;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ftag{display:inline-block;font-size:8px;padding:2px 6px;border-radius:3px;background:#ef444418;color:#ef9090;border:1px solid #ef444420;margin:1px}
-.up-zone{max-width:600px;margin:40px auto;padding:30px;text-align:center}
-.up-box{border:2px dashed #1e2545;border-radius:12px;padding:20px;margin:8px 0;cursor:pointer;transition:all .2s}
+.up-zone{max-width:700px;margin:40px auto;padding:30px;text-align:center}
+.up-box{border:2px dashed #1e2545;border-radius:12px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center}
 .up-box:hover{border-color:#4f6ef7}.up-box.ok{border-color:#22c55e;background:#22c55e08}
-.up-btn{margin-top:16px;padding:10px 24px;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.up-btn{margin-top:16px;padding:12px 28px;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .up-btn:disabled{opacity:.4;cursor:not-allowed}
-.err{color:#ef4444;font-size:10px;margin-top:12px}.ok-msg{color:#22c55e;font-size:10px;margin-top:12px}
+.msg{margin-top:12px;font-size:11px}
+.msg.err{color:#ef4444}.msg.ok{color:#22c55e}.msg.info{color:#60a5fa}
 </style>
 </head>
 <body>
-<div id="app"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;gap:16px"><div style="width:40px;height:40px;border:3px solid #1e2545;border-top:3px solid #4f6ef7;border-radius:50%;animation:sp 1s linear infinite"></div><div style="color:#4a5280;font-size:11px">A carregar...</div></div></div>
-<style>@keyframes sp{to{transform:rotate(360deg)}}</style>
+<div id="app"></div>
 <script>
+// ═══════════════════════════════════════════════════
+// CANCELLATION SHIELD v8 — 100% CLIENT-SIDE
+// No API. No Blob. All processing in the browser.
+// ═══════════════════════════════════════════════════
+
 const SH={Alegria:"ALE","SB I":"SBI","SB II":"SBII"};
 const PS=["Alegria","SB I","SB II"];
 const fmt=d=>{if(!d)return"";const p=d.split("-");return p[2]+"/"+p[1]};
-const dn=d=>["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d).getDay()];
+const dn=d=>["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d+"T12:00:00").getDay()];
 const rc=l=>l==="HIGH"?"#ef4444":l==="MEDIUM"?"#f59e0b":"#22c55e";
 const oc=o=>o==="NR+Paid"?"#60a5fa":o&&o.includes("preCheckedIn")?"#4ade80":null;
 const cb=r=>oc(r.override)||rc(r.level);
 const today=new Date().toISOString().split("T")[0];
 
-let D=null,pf={reservation:[],availability:[],duve:null};
-let st={prop:"ALL",tab:"timeline",sel:null,viewDays:30,uping:false,umsg:""};
-st.vs=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().split("T")[0]})();
+// ─── BOOKING.COM BENCHMARKS ───
+const BDC_LT={Alegria:{1:6.6,3:0,7:1.9,14:26.9,30:38.6,60:42.5,90:69.1,999:67.7},"SB I":{1:8.4,3:2.6,7:9.5,14:31.7,30:46.7,60:51,90:54.5,999:51},"SB II":{1:1.2,3:0,7:10.1,14:20.5,30:40.3,60:46.8,90:64.6,999:55.6}};
+const BDC_MO={Alegria:[39.2,29.2,31.2,22.2,33.3,32,32,29.4,29.2,49,40.7,33.3],"SB I":[11.3,25.3,18.3,37.4,41.5,47.4,34.6,37.6,45.1,50,57.1,34.5],"SB II":[9.7,26.5,27.9,31.9,33,30.1,31.5,30.8,38.3,40.5,29.2,46.1]};
 
-async function load(){try{const r=await fetch("/api/data");const d=await r.json();if(d.status==="no_data"){D=null}else{D=d}render()}catch(e){D=null;render()}}
+// ─── V8 SCORING MODEL ───
+function isNR(r){const l=(r||"").toLowerCase();return l.includes("nr ")||l.startsWith("nr")||l.includes("non-ref")||l.includes("non-refundable")||l.includes("early bird")}
+function sRate(r){const l=(r||"").toLowerCase();if(l.includes("flex 3"))return 58;if(l.includes("standard")&&l.includes("breakfast"))return 50;if(l.includes("flex 5"))return 48;if(l.includes("semi-flex"))return 35;if(l.includes("standard")&&l.includes("booking"))return 30;if(l.includes("standard"))return 35;if(l.includes("flex")&&l.includes("ota"))return 30;if(l.includes("black friday"))return 35;if(l.includes("friends")||l.includes("family"))return 5;if(l.includes("welcome"))return 3;if(isNR(r))return 3;if(l.includes("long"))return 10;return 25}
+function sChan(s){const l=(s||"").toLowerCase();if(l.includes("telephone"))return 85;if(l.includes("a-hotels")||l.includes("american express"))return 82;if(l.includes("booking engine sbii"))return 42;if(l.includes("booking.com"))return 38;if(l.includes("booking engine sbi"))return 32;if(l.includes("booking engine alegria"))return 30;if(l.includes("channel"))return 35;if(l.includes("in person"))return 30;if(l.includes("message")||l.includes("email"))return 25;if(l.includes("hotels.com"))return 18;if(l.includes("airbnb"))return 14;if(l.includes("expedia"))return 17;if(l.includes("booking engine"))return 12;return 20}
+function sLT(d,p){if(!d||d<0)return 15;const b=BDC_LT[p]||BDC_LT["SB II"];if(d<=1)return Math.round(b[1]*.8);if(d<=3)return Math.round((b[3]||5)*.8+5);if(d<=7)return Math.round(b[7]*.9);if(d<=14)return Math.round(b[14]*.85);if(d<=30)return Math.round(b[30]*.85);if(d<=60)return Math.round(b[60]*.85);if(d<=90)return Math.round(b[90]*.8);return Math.round(b[999]*.8)}
+function sSea(m,p){if(!m)return 25;const b=BDC_MO[p]||BDC_MO["SB II"];const i=(m-3+12)%12;return Math.round((b[i]||30)*.7)}
+function sLOS(n){if(!n||n<=0)return 20;if(n<=2)return 20;if(n<=4)return 25;if(n<=7)return 35;if(n<=14)return 60;return 78}
+function sPay(p){const s=(p||"").toLowerCase().trim();if(s==="success")return 2;if(s==="fail")return 10;return 40}
+function sADR(a){if(!a||a<=0)return 25;if(a<100)return 12;if(a<150)return 10;if(a<200)return 20;if(a<300)return 45;return 65}
 
-async function upload(){
-  st.uping=true;
-  const all=[...pf.reservation,...pf.availability];
-  if(pf.duve)all.push(pf.duve);
-  let done=0;
-  try{
-    for(const item of all){
-      done++;st.umsg=`A enviar ${done}/${all.length}: ${item.name}`;render();
-      const r=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({files:[{type:item.type,content:item.content,name:item.name}]})});
-      const d=await r.json();
-      if(d.status==="error"){st.umsg="Erro: "+(d.error||JSON.stringify(d));st.uping=false;render();return}
+function computeRisk(r,duve){
+  const rate=r.rate||"",pay=(r.payment||"").toLowerCase().trim();
+  if(isNR(rate)&&pay==="success")return{score:3,level:"LOW",override:"NR+Paid"};
+  const dv=duve?duve[r.id]:null;
+  if(dv&&dv.status==="preCheckedIn")return{score:3,level:"LOW",override:"Duve:preCheckedIn"};
+  let s=.20*sRate(rate)+.18*sLT(r.leadTimeDays,r.prop)+.16*sChan(r.source)+.14*sPay(r.payment)+.10*sLOS(r.nights)+.08*sADR(r.adr)+.06*sSea(r.arrMonth,r.prop)+.04*(r.hasNoContact?60:5)+.04*(r.isSolo?40:20);
+  let ov="";
+  if(dv){if(dv.status==="beforeCheckIn"&&dv.terms==="Didn't agree"){s+=5;ov="Duve:noEngagement"}else if(dv.status==="beforeCheckIn"&&dv.terms==="Agreed"){s-=3;ov="Duve:partial"}}
+  if(isNR(rate)&&pay!=="success"){s+=8;ov=ov||"NR:noPay"}
+  s=Math.max(0,Math.min(Math.round(s),100));
+  return{score:s,level:s>=33?"HIGH":s>=18?"MEDIUM":"LOW",override:ov};
+}
+function tmpl(lv,d,n){if(lv==="HIGH"){if(n>=8)return"7A";if(d>14)return n>=5?"1B":"1A";if(d>7)return"2A/2B";if(d>3)return"3A/3B";return"3A"}if(lv==="MEDIUM")return d>14?"4A":"5A";return"-"}
+function offer(lv,d,n){if(lv==="HIGH"){if(n>=8)return"Welcome+mid-stay+late c-out";if(d>14)return"Early c-in+late c-out";if(d>7)return"Early c-in+upgrade";if(d>3)return"Crédito/datas alt.";return"Contacto urgente"}if(lv==="MEDIUM")return d>14?"Guia bairro":"Info check-in";return"-"}
+function chan(src,lv){const s=(src||"").toLowerCase();if(s.includes("booking.com"))return"BDC Extranet";if(s.includes("airbnb"))return"Airbnb";if(s.includes("expedia")||s.includes("hotels.com"))return"Expedia";return lv==="HIGH"?"WhatsApp":"Email"}
+
+// ─── EXCEL PARSING (runs in browser via SheetJS CDN) ───
+function detectProp(wb){
+  const ps=wb.Sheets["Parameters"];
+  if(!ps)return"";
+  const d=XLSX.utils.sheet_to_json(ps,{header:1});
+  for(const r of d){
+    const k=String(r[0]||""),v=String(r[1]||"");
+    if(k.includes("Enterprise")){
+      if(v.includes("Alegria"))return"Alegria";
+      if(v.includes("Barbara II"))return"SB II";
+      if(v.includes("Barbara I"))return"SB I";
     }
-    st.umsg="";pf={reservation:[],availability:[],duve:null};
-    await load();
-  }catch(e){st.umsg="Erro: "+String(e)}
-  st.uping=false;render();
+  }
+  return"";
 }
 
-async function hf(type,e){
-  const files=Array.from(e.target.files);
-  for(const f of files){
-    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=()=>rej('read error');r.readAsDataURL(f)});
-    const item={name:f.name,content:b64,type:type};
-    if(type==="duve")pf.duve=item;else pf[type]=[...pf[type],item];
+function parseRes(wb){
+  const prop=detectProp(wb);
+  const ws=wb.Sheets["Reservations"];
+  if(!ws)return{prop,res:[],err:"No Reservations sheet"};
+  const data=XLSX.utils.sheet_to_json(ws,{defval:""});
+  const now=new Date();
+  const res=data.filter(r=>r.Identifier&&(r.Status==="Confirmed"||r.Status==="Checked in")).map(r=>{
+    const arr=r.Arrival?new Date(r.Arrival):null;
+    const dep=r.Departure?new Date(r.Departure):null;
+    const cre=r.Created?new Date(r.Created):null;
+    const nights=arr&&dep?Math.round((dep-arr)/864e5):0;
+    const lt=arr&&cre?Math.round((arr-cre)/864e5):0;
+    const du=arr?Math.round((arr-now)/864e5):999;
+    const adr=r["Average rate (nightly)"]||(r["Cancelled cost"]&&nights?r["Cancelled cost"]/nights:0);
+    const noc=(!r.Email||r.Email==="")&&(!r.Telephone||r.Telephone==="");
+    let rm=String(r["Space number"]||(r["Requested category"]||"").split(" - ")[0]);
+    rm=rm.replace(/^SBII\s*/i,"").replace(/^SBI\s*/i,"").replace(/^ALE\s*/i,"").trim();
+    return{id:r.Identifier,guest:`${r["First name"]||""} ${r["Last name"]||""}`.trim(),prop,room:rm,
+      roomType:r["Requested category"]||"",arrival:arr?arr.toISOString().split("T")[0]:"",
+      departure:dep?dep.toISOString().split("T")[0]:"",nights,daysUntil:du,leadTimeDays:lt,
+      rate:r.Rate||"",adr:Math.round(adr||0),total:Math.round(r["Total amount"]||0),
+      source:r["Reservation source"]||"",payment:r["Automatic payment"]||"",
+      email:r.Email||"",phone:r.Telephone||"",persons:r["Person count"]||1,
+      nationality:r["Customer nationality"]||"",hasNoContact:noc,isSolo:r["Person count"]===1,
+      arrMonth:arr?arr.getMonth()+1:null};
+  });
+  return{prop,res,err:null,total:data.length,active:res.length};
+}
+
+function parseAvail(wb){
+  const prop=detectProp(wb);
+  const os=wb.Sheets["Occupancy"];
+  if(!os)return{prop,data:{}};
+  const od=XLSX.utils.sheet_to_json(os,{header:1,cellDates:true});
+  const as=wb.Sheets["Availability"]?XLSX.utils.sheet_to_json(wb.Sheets["Availability"],{header:1,cellDates:true}):null;
+  const rs=wb.Sheets["Rate"]?XLSX.utils.sheet_to_json(wb.Sheets["Rate"],{header:1,cellDates:true}):null;
+  const dates=(od[0]||[]).slice(2).filter(d=>d instanceof Date);
+  const result={};
+  dates.forEach((date,di)=>{
+    const key=date.toISOString().split("T")[0];
+    let tO=0,tS=0,tA=0,tR=0,rc=0;const rts=[];
+    for(let ri=1;ri<od.length;ri++){
+      if(od[ri][0]!=="Stay")continue;
+      const rt=String(od[ri][1]||"").trim();
+      const o=Number(od[ri][di+2])||0;
+      const a=as?(Number(as[ri]?.[di+2])||0):0;
+      const rate=rs?(Number(rs[ri]?.[di+2])||0):0;
+      tO+=o;tS++;tA+=a;if(rate>0){tR+=rate;rc++}
+      rts.push({type:rt,occ:o,avail:a,rate:Math.round(rate)});
+    }
+    result[key]={occ:tO,spaces:tS,avail:tA,avgRate:rc>0?Math.round(tR/rc):0,occPct:tS>0?Math.round(tO/tS*1000)/10:0,rooms:rts};
+  });
+  return{prop,data:result};
+}
+
+function parseDuve(text){
+  const lines=text.split("\n");if(lines.length<2)return{};
+  const hdr=lines[0].split(",").map(h=>h.trim().replace(/"/g,""));
+  const ei=hdr.indexOf("External Id"),si=hdr.indexOf("Status");
+  const ti=hdr.findIndex(h=>h.includes("Terms")),pi=hdr.findIndex(h=>h.includes("passport"));
+  if(ei<0)return{};const map={};
+  for(let i=1;i<lines.length;i++){
+    const c=lines[i].split(",").map(x=>x.trim().replace(/"/g,""));
+    if(c[ei])map[c[ei]]={status:c[si]||"",terms:ti>=0?c[ti]||"":"",passport:pi>=0?c[pi]||"":""};
   }
+  return map;
+}
+
+// ─── STATE ───
+let D={reservations:[],availability:{},overbooking:[],duve:{},log:[]};
+let st={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:""};
+st.vs=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().split("T")[0]})();
+let pendingFiles=[];
+
+function addLog(msg){D.log.push(`[${new Date().toLocaleTimeString()}] ${msg}`);console.log("SHIELD:",msg)}
+
+// ─── PROCESS ALL FILES ───
+async function processFiles(){
+  st.uping=true;st.umsg="A ler ficheiros...";render();
+  const results={res:[],avail:{},duve:{},logs:[]};
+  let filesDone=0;
+
+  for(const pf of pendingFiles){
+    filesDone++;
+    st.umsg=`A processar ${filesDone}/${pendingFiles.length}: ${pf.name}`;render();
+    try{
+      if(pf.type==="duve"){
+        const text=await pf.file.text();
+        results.duve=parseDuve(text);
+        results.logs.push(`✅ Duve: ${Object.keys(results.duve).length} records`);
+      }else{
+        const buf=await pf.file.arrayBuffer();
+        const wb=XLSX.read(buf,{cellDates:true});
+        if(pf.type==="reservation"){
+          const{prop,res,err,total,active}=parseRes(wb);
+          if(err){results.logs.push(`❌ ${pf.name}: ${err}`);continue}
+          // Merge: dedup by id, keep latest
+          const ids=new Set(results.res.map(r=>r.id));
+          let added=0;
+          for(const r of res){if(!ids.has(r.id)){results.res.push(r);ids.add(r.id);added++}}
+          results.logs.push(`✅ ${prop||"?"}: ${total} rows → ${active} active → ${added} new (${results.res.length} total)`);
+        }else if(pf.type==="availability"){
+          const{prop,data}=parseAvail(wb);
+          results.avail[prop]=data;
+          results.logs.push(`✅ Avail ${prop}: ${Object.keys(data).length} days`);
+        }
+      }
+    }catch(e){
+      results.logs.push(`❌ ${pf.name}: ${e.message}`);
+    }
+  }
+
+  // Score all reservations
+  st.umsg="A calcular riscos...";render();
+  const scored=results.res.map(r=>{
+    const{score,level,override}=computeRisk(r,results.duve);
+    const factors=[];
+    if(sRate(r.rate)>=35)factors.push("Rate");
+    if(sChan(r.source)>=35)factors.push("Canal");
+    if(r.leadTimeDays>30)factors.push("LT:"+r.leadTimeDays+"d");
+    if(r.nights>7)factors.push("LOS:"+r.nights+"n");
+    if(sPay(r.payment)>=30)factors.push("NoPay");
+    if(sADR(r.adr)>=40)factors.push("ADR€"+r.adr);
+    if(r.hasNoContact)factors.push("NoContact");
+    return{...r,score,level,override,factors,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)};
+  });
+
+  // Compute overbooking
+  const ob=[];
+  const dnArr=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const cutoff=new Date(Date.now()+90*864e5).toISOString().split("T")[0];
+  PS.forEach(prop=>{
+    const pa=results.avail[prop];if(!pa)return;
+    const pr=scored.filter(r=>r.prop===prop);
+    Object.entries(pa).forEach(([ds,dd])=>{
+      if(ds<today||ds>cutoff)return;
+      const hi=pr.filter(r=>r.level==="HIGH"&&r.arrival<=ds&&r.departure>ds);
+      if((dd.occPct||0)>=70&&hi.length>0){
+        const n=Math.min(Math.max(1,Math.floor(hi.length*.4)),3);
+        const adj=Math.max(0,n-(hi.some(r=>r.daysUntil>7)?1:0));
+        if(adj>0){
+          const fr=(dd.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0);
+          ob.push({date:ds,prop,occPct:dd.occPct,nHigh:hi.length,ob:adj,rooms:fr.slice(0,adj).map(rt=>rt.type+" (€"+rt.rate+")").join(", ")||"Any",avgRate:dd.avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()]});
+        }
+      }
+    });
+  });
+  ob.sort((a,b)=>a.date.localeCompare(b.date));
+
+  D={reservations:scored,availability:results.avail,overbooking:ob,duve:results.duve,log:results.logs,generated:new Date().toISOString()};
+  st.phase="dashboard";st.uping=false;st.umsg="";pendingFiles=[];
+  render();
+  addLog(`Dashboard loaded: ${scored.length} reservations, ${ob.length} OB days`);
+}
+
+function addFiles(type,e){
+  const files=Array.from(e.target.files);
+  for(const f of files)pendingFiles.push({file:f,name:f.name,type});
   render();
 }
-function gf(){return D?st.prop==="ALL"?D.reservations:D.reservations.filter(x=>x.prop===st.prop):[]}
-function go(){return D?st.prop==="ALL"?D.overbooking:D.overbooking.filter(x=>x.prop===st.prop):[]}
-function gd(){const a=[];for(let i=0;i<st.viewDays;i++){const d=new Date(st.vs);d.setDate(d.getDate()+i);a.push(d.toISOString().split("T")[0])}return a}
-function gr(){if(!D)return[];const ps=st.prop==="ALL"?PS:[st.prop];const r=[];
+
+// ─── HELPERS ───
+function gf(){return st.prop==="ALL"?D.reservations:D.reservations.filter(x=>x.prop===st.prop)}
+function go(){return st.prop==="ALL"?D.overbooking:D.overbooking.filter(x=>x.prop===st.prop)}
+function gd(){const a=[];for(let i=0;i<st.viewDays;i++){const d=new Date(st.vs+"T12:00:00");d.setDate(d.getDate()+i);a.push(d.toISOString().split("T")[0])}return a}
+function gr(){const ps=st.prop==="ALL"?PS:[st.prop];const r=[];
 ps.forEach(p=>{const pr=D.reservations.filter(x=>x.prop===p);const rm=new Map();
 pr.forEach(x=>{const k=x.room||"?";if(!rm.has(k))rm.set(k,[]);rm.get(k).push(x)});
 [...rm.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([room,rr])=>r.push({prop:p,room,res:rr}))});return r}
 
+// ─── RENDER ───
 function render(){
   const app=document.getElementById("app");
-  if(!D){app.innerHTML=rupload();return}
+  if(st.phase==="upload"){app.innerHTML=rupload();return}
   const res=gf(),ob=go(),days=gd(),rows=gr(),sel=st.sel;
   const hi=res.filter(r=>r.level==="HIGH"),me=res.filter(r=>r.level==="MEDIUM"),lo=res.filter(r=>r.level==="LOW");
   const ret=res.filter(r=>r.level!=="LOW"&&r.daysUntil>0).sort((a,b)=>a.level===b.level?a.daysUntil-b.daysUntil:a.level==="HIGH"?-1:1);
-  const cW=st.viewDays<=14?56:st.viewDays<=30?38:st.viewDays<=60?22:14;
-  const rH=26,lW=110;
+  const cW=st.viewDays<=14?56:st.viewDays<=30?38:st.viewDays<=60?22:14,rH=26,lW=110;
   let h="";
   // Header
-  h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v7 — THE HAUS GROUP — ${(D.generated||"").split("T")[0]}</small></div></div><div class="btns">`;
+  h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v8 — THE HAUS GROUP — ${(D.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
   ["ALL",...PS].forEach(p=>{h+=`<button class="btn${st.prop===p?" on":""}" onclick="sp('${p}')">${p}</button>`});
-  h+=`<button class="btn warn" onclick="D=null;render()" style="margin-left:12px">↑ Upload</button></div></div>`;
-  // Status
-  const bp=D.summary?.byProp||{};
-  h+=`<div class="status"><div class="dot"></div>${D.summary?.total||0} reservas — ${bp.Alegria||0} ALE / ${bp["SB I"]||0} SBI / ${bp["SB II"]||0} SBII — ${(D.generated||"").replace("T"," ").slice(0,16)}</div>`;
+  h+=`<button class="btn warn" onclick="st.phase='upload';render()">↑ Upload</button></div></div>`;
+  const bp={};PS.forEach(p=>{bp[p]=D.reservations.filter(r=>r.prop===p).length});
+  h+=`<div class="status"><div class="dot" style="background:#22c55e"></div>${D.reservations.length} reservas — ${bp.Alegria||0} ALE / ${bp["SB I"]||0} SBI / ${bp["SB II"]||0} SBII</div>`;
   // KPIs
   h+=`<div class="kpis">`;
   [{l:"RESERVAS",v:res.length,c:"#f0f4ff"},{l:"HIGH RISK",v:hi.length,s:"€"+Math.round(hi.reduce((s,r)=>s+r.total,0)/1000)+"K",c:"#ef4444"},
    {l:"MEDIUM",v:me.length,s:"€"+Math.round(me.reduce((s,r)=>s+r.total,0)/1000)+"K",c:"#f59e0b"},
    {l:"LOW/SAFE",v:lo.length,s:lo.filter(r=>r.override).length+" overrides",c:"#22c55e"},
    {l:"RETENÇÃO",v:ret.length,s:"contactar",c:"#60a5fa"},
-   {l:"OB DIAS",v:ob.length,s:ob.reduce((s,o)=>s+o.ob,0)+" unit-nights",c:"#a78bfa"},
+   {l:"OB DIAS",v:ob.length,s:ob.reduce((s,o)=>s+o.ob,0)+" nights",c:"#a78bfa"},
    {l:"OB RECEITA",v:"€"+Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)/1000)+"K",s:"potencial",c:"#c084fc"}
   ].forEach(k=>{h+=`<div class="kpi"><label>${k.l}</label><b style="color:${k.c}">${k.v}</b>${k.s?`<small>${k.s}</small>`:""}</div>`});
   h+=`</div>`;
-  // Tabs
+  // Tabs + Nav
   h+=`<div class="tabs">`;
-  [{id:"timeline",l:"▦ Timeline"},{id:"retention",l:"☎ Retenção"},{id:"overbooking",l:"⊕ Overbooking"}].forEach(t=>{
-    h+=`<button class="tab${st.tab===t.id?" on":""}" onclick="stab('${t.id}')">${t.l}</button>`});
+  [{id:"timeline",l:"▦ Timeline"},{id:"retention",l:"☎ Retenção"},{id:"overbooking",l:"⊕ Overbooking"}].forEach(t=>{h+=`<button class="tab${st.tab===t.id?" on":""}" onclick="stab('${t.id}')">${t.l}</button>`});
   h+=`<div class="nav"><button class="nbtn" onclick="np()">◀</button><button class="nbtn on" onclick="nt()">HOJE</button><button class="nbtn" onclick="nn()">▶</button>`;
   [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${st.viewDays===d?" on":""}" onclick="sd(${d})">${d}d</button>`});
   h+=`</div></div><div class="content"><div class="main">`;
-
+  // TIMELINE
   if(st.tab==="timeline"){
     h+=`<div class="tl-wrap"><div class="tl"><div class="tl-lbl" style="width:${lW}px"><div style="height:28px;background:#12162a;border-bottom:1px solid #1e2545;border-right:1px solid #1e2545"></div>`;
     rows.forEach((row,i)=>{h+=`<div class="tl-r" style="height:${rH}px;background:${i%2===0?"#0c0f1a":"#0e1125"}"><span style="color:#3a4270;width:32px;font-size:8px;font-weight:700">${SH[row.prop]||""}</span><span style="color:#8090c0;font-weight:600">${row.room}</span></div>`});
     h+=`</div><div style="display:flex">`;
-    days.forEach(day=>{const iT=day===today,iW=[0,6].includes(new Date(day).getDay());
-      h+=`<div style="width:${cW}px;flex-shrink:0"><div style="height:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${iT?"#1e3a8a":"#12162a"};border-bottom:1px solid #1e2545"><span style="font-size:7px;color:${iT?"#93b4ff":iW?"#4a5280":"#3a4270"};font-weight:600">${dn(day)}</span><span style="font-size:${cW>=38?10:8}px;color:${iT?"#fff":"#6070a0"};font-weight:700">${new Date(day).getDate()}</span></div>`;
-      rows.forEach((row,ri)=>{const r=row.res.find(x=>x.arrival<=day&&x.departure>day);
+    days.forEach(day=>{const iT=day===today,iW=[0,6].includes(new Date(day+"T12:00:00").getDay());
+      h+=`<div style="width:${cW}px;flex-shrink:0"><div style="height:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${iT?"#1e3a8a":"#12162a"};border-bottom:1px solid #1e2545"><span style="font-size:7px;color:${iT?"#93b4ff":iW?"#4a5280":"#3a4270"};font-weight:600">${dn(day)}</span><span style="font-size:${cW>=38?10:8}px;color:${iT?"#fff":"#6070a0"};font-weight:700">${new Date(day+"T12:00:00").getDate()}</span></div>`;
+      rows.forEach(row=>{const r=row.res.find(x=>x.arrival<=day&&x.departure>day);
         if(!r){h+=`<div class="tl-c" style="height:${rH}px;background:${iW?"#0b0e18":"#0c0f1a"}"></div>`;return}
         const isA=r.arrival===day,bg=cb(r);
-        h+=`<div class="tl-c res" style="height:${rH}px;background:${bg};opacity:${isA?1:.7};${isA?"border-radius:3px 0 0 3px;":""}" onclick="sel('${r.id}')" title="${r.guest}|${r.level}(${r.score})|${r.rate}">${isA&&cW>=30?`<span style="font-size:7px;color:#fff;font-weight:800;text-shadow:0 1px 3px #000;overflow:hidden;white-space:nowrap;padding:0 2px">${(r.guest.split(" ").pop()||"").slice(0,5)}</span>`:""}</div>`});
+        h+=`<div class="tl-c res" style="height:${rH}px;background:${bg};opacity:${isA?1:.7};${isA?"border-radius:3px 0 0 3px;":""}" onclick="sel('${r.id}')" title="${r.guest}|${r.level}(${r.score})">${isA&&cW>=30?`<span style="font-size:7px;color:#fff;font-weight:800;text-shadow:0 1px 3px #000;padding:0 2px;overflow:hidden;white-space:nowrap">${(r.guest.split(" ").pop()||"").slice(0,5)}</span>`:""}</div>`});
       h+=`</div>`});
-    h+=`</div></div>`;
-    h+=`<div class="legend"><span><i style="background:#ef4444"></i>HIGH</span><span><i style="background:#f59e0b"></i>MEDIUM</span><span><i style="background:#22c55e"></i>LOW</span><span><i style="background:#60a5fa"></i>NR+Paid</span><span><i style="background:#4ade80"></i>Duve</span></div></div>`;
-  }
-
+    h+=`</div></div><div class="legend"><span><i style="background:#ef4444"></i>HIGH</span><span><i style="background:#f59e0b"></i>MEDIUM</span><span><i style="background:#22c55e"></i>LOW</span><span><i style="background:#60a5fa"></i>NR+Paid</span><span><i style="background:#4ade80"></i>Duve</span></div></div>`}
+  // RETENTION
   if(st.tab==="retention"){
-    h+=`<div class="tbl"><div style="font-size:12px;font-weight:800;margin-bottom:10px;color:#f0f4ff">Contactar — ${ret.length} reservas</div><table><tr><th>#</th><th>SCORE</th><th>RISK</th><th>PROP</th><th>GUEST</th><th>ARRIVAL</th><th>N</th><th>DIAS</th><th>TMPL</th><th>CANAL</th><th>OFERTA</th></tr>`;
-    ret.forEach((r,i)=>{
-      h+=`<tr onclick="sel('${r.id}')"><td style="color:#4a5280">${i+1}</td><td style="font-weight:800;color:${rc(r.level)}">${r.score}</td><td style="font-weight:700;color:${rc(r.level)};font-size:9px">${r.level}</td><td style="color:#5a6a9a;font-size:9px">${SH[r.prop]||""}</td><td style="color:#c8d0e0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.guest}</td><td style="color:#6a7aaa">${fmt(r.arrival)}</td><td style="color:#6a7aaa">${r.nights}n</td><td style="color:${r.daysUntil<=7?"#ef4444":"#6a7aaa"};font-weight:${r.daysUntil<=7?800:400}">${r.daysUntil}d</td><td style="color:#4f6ef7;font-weight:700">${r.template}</td><td style="color:#a78bfa;font-size:9px">${r.channel||""}</td><td style="color:#4a5280;font-size:9px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.offer}</td></tr>`;
-    });
-    h+=`</table></div>`;
-  }
-
+    h+=`<div class="tbl"><div style="font-size:12px;font-weight:800;margin-bottom:10px;color:#f0f4ff">Contactar — ${ret.length} reservas</div><table><tr><th>#</th><th>SC</th><th>RISK</th><th>PROP</th><th>GUEST</th><th>ARRIVAL</th><th>N</th><th>DIAS</th><th>TMPL</th><th>CANAL</th><th>OFERTA</th></tr>`;
+    ret.forEach((r,i)=>{h+=`<tr onclick="sel('${r.id}')"><td style="color:#4a5280">${i+1}</td><td style="font-weight:800;color:${rc(r.level)}">${r.score}</td><td style="font-weight:700;color:${rc(r.level)};font-size:9px">${r.level}</td><td style="color:#5a6a9a;font-size:9px">${SH[r.prop]||""}</td><td style="color:#c8d0e0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.guest}</td><td style="color:#6a7aaa">${fmt(r.arrival)}</td><td style="color:#6a7aaa">${r.nights}n</td><td style="color:${r.daysUntil<=7?"#ef4444":"#6a7aaa"};font-weight:${r.daysUntil<=7?800:400}">${r.daysUntil}d</td><td style="color:#4f6ef7;font-weight:700">${r.template}</td><td style="color:#a78bfa;font-size:9px">${r.channel}</td><td style="color:#4a5280;font-size:9px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.offer}</td></tr>`});
+    h+=`</table></div>`}
+  // OVERBOOKING
   if(st.tab==="overbooking"){
     h+=`<div class="tbl"><div style="font-size:12px;font-weight:800;margin-bottom:4px;color:#f0f4ff">Overbooking — Apartamentos para vender</div><div style="font-size:9px;color:#4a5280;margin-bottom:12px">Ocup ≥70% + HIGH risk. Máx 40% das HIGH.</div>`;
-    if(ob.length===0){h+=`<div style="padding:40px;text-align:center;color:#3a4270">Nenhuma oportunidade</div>`}
+    if(!ob.length)h+=`<div style="padding:40px;text-align:center;color:#3a4270">${Object.keys(D.availability).length?"Nenhuma oportunidade no período":"Faz upload dos Availability Reports"}</div>`;
     else{h+=`<table><tr><th>DATA</th><th>DIA</th><th>PROP</th><th>OCUP</th><th>HIGH</th><th>OB</th><th>TIPO APT</th><th>RATE</th></tr>`;
     ob.forEach(o=>{h+=`<tr><td style="color:#c8d0e0;font-weight:700">${fmt(o.date)}</td><td style="color:#4a5280">${o.dow}</td><td style="color:#6a7aaa;font-size:9px">${SH[o.prop]||""}</td><td style="color:${o.occPct>=90?"#ef4444":"#f59e0b"};font-weight:800">${Math.round(o.occPct)}%</td><td style="color:#ef4444;font-weight:800">${o.nHigh}</td><td style="color:#a78bfa;font-weight:900;font-size:13px">+${o.ob}</td><td style="color:#5a6a9a;font-size:9px">${o.rooms}</td><td style="color:#22c55e;font-weight:700">€${o.avgRate}</td></tr>`});
-    h+=`</table><div style="padding:8px;font-size:10px;color:#4a5280;display:flex;justify-content:space-between"><span>${ob.length} dias|${ob.reduce((s,o)=>s+o.ob,0)} nights</span><span style="color:#22c55e;font-weight:700">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()}</span></div>`}
-    h+=`</div>`;
-  }
+    h+=`</table><div style="padding:8px;font-size:10px;color:#4a5280;display:flex;justify-content:space-between"><span>${ob.length} dias | ${ob.reduce((s,o)=>s+o.ob,0)} nights</span><span style="color:#22c55e;font-weight:700">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()}</span></div>`}
+    h+=`</div>`}
   h+=`</div>`;
-
+  // PANEL
   if(sel){const bg=rc(sel.level);
-    h+=`<div class="panel"><div style="padding:12px 14px;border-bottom:1px solid #1e2545;display:flex;justify-content:space-between;align-items:start"><div><h2>${sel.guest}</h2><h3>${sel.prop} — ${sel.room} — ${sel.roomType}</h3></div><button onclick="csel()" style="background:0;border:0;color:#4a5280;font-size:16px;cursor:pointer;font-family:inherit">✕</button></div>`;
+    h+=`<div class="panel"><div style="padding:12px 14px;border-bottom:1px solid #1e2545;display:flex;justify-content:space-between;align-items:start"><div><h2>${sel.guest}</h2><h3>${sel.prop} — ${sel.room} — ${sel.roomType}</h3></div><button onclick="csel()" style="background:0;border:0;color:#4a5280;font-size:16px;cursor:pointer">✕</button></div>`;
     h+=`<div class="risk" style="background:${bg}18;border:1px solid ${bg}30"><span class="sc" style="color:${bg}">${sel.score}</span><span class="lv" style="color:${bg}">${sel.level}</span>${sel.override?`<span class="ov">${sel.override}</span>`:""}</div>`;
     h+=`<div style="padding:0 14px">`;
-    [{l:"Arrival",v:fmt(sel.arrival)+" ("+sel.daysUntil+"d)"},{l:"Departure",v:fmt(sel.departure)},{l:"Noites",v:sel.nights},{l:"Rate",v:sel.rate},{l:"ADR",v:"€"+sel.adr},{l:"Total",v:"€"+sel.total},{l:"Canal",v:sel.source},{l:"Pagamento",v:sel.payment||"—"},{l:"Email",v:sel.email||"—"},{l:"Telefone",v:sel.phone||"—"},{l:"Template",v:sel.template},{l:"Contactar via",v:sel.channel||"—"},{l:"Oferta",v:sel.offer}].forEach(d=>{h+=`<div class="row"><label>${d.l}</label><span>${d.v}</span></div>`});
+    [{l:"Arrival",v:fmt(sel.arrival)+" ("+sel.daysUntil+"d)"},{l:"Departure",v:fmt(sel.departure)},{l:"Noites",v:sel.nights},{l:"Rate",v:sel.rate},{l:"ADR",v:"€"+sel.adr},{l:"Total",v:"€"+sel.total},{l:"Canal",v:sel.source},{l:"Pagamento",v:sel.payment||"—"},{l:"Email",v:sel.email||"—"},{l:"Tel",v:sel.phone||"—"},{l:"Template",v:sel.template},{l:"Contactar via",v:sel.channel},{l:"Oferta",v:sel.offer}].forEach(d=>{h+=`<div class="row"><label>${d.l}</label><span>${d.v}</span></div>`});
     h+=`</div>`;
     if(sel.factors&&sel.factors.length){h+=`<div style="padding:10px 14px"><div style="font-size:8px;font-weight:800;color:#3a4270;letter-spacing:1.5px;margin-bottom:6px">FACTORES DE RISCO</div>`;sel.factors.forEach(f=>{h+=`<span class="ftag">${f}</span>`});h+=`</div>`}
-    h+=`</div>`;
-  }
+    h+=`</div>`}
   h+=`</div>`;app.innerHTML=h;
 }
 
 function rupload(){
-  const rC=pf.reservation.length,aC=pf.availability.length,dC=pf.duve?1:0;
-  let h=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v7 — THE HAUS GROUP</small></div></div></div>`;
-  h+=`<div class="up-zone"><div style="font-size:48px;margin-bottom:12px">🛡️</div><div style="font-size:18px;font-weight:800;color:#f0f4ff;margin-bottom:4px">Cancellation Shield v7</div><div style="font-size:11px;color:#4a5280;margin-bottom:24px">Upload dos ficheiros do Mews e Duve</div>`;
+  const rC=pendingFiles.filter(f=>f.type==="reservation").length;
+  const aC=pendingFiles.filter(f=>f.type==="availability").length;
+  const dC=pendingFiles.filter(f=>f.type==="duve").length;
+  let h=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v8 — CLIENT-SIDE — THE HAUS GROUP</small></div></div></div>`;
+  h+=`<div class="up-zone"><div style="font-size:48px;margin-bottom:12px">🛡️</div><div style="font-size:18px;font-weight:800;color:#f0f4ff;margin-bottom:4px">Cancellation Shield v8</div><div style="font-size:11px;color:#4a5280;margin-bottom:24px">Upload ficheiros do Mews e Duve — processamento 100% local</div>`;
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">`;
-  h+=`<label class="up-box${rC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${rC?"✅":"📋"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Reservation Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${rC?rC+" ficheiro(s)":"Mews .xlsx (vários)"}</div><input type="file" accept=".xlsx" multiple onchange="hf('reservation',event)" style="display:none"></label>`;
-  h+=`<label class="up-box${aC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${aC?"✅":"📊"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Availability Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${aC?aC+" ficheiro(s)":"Mews .xlsx (1/prop)"}</div><input type="file" accept=".xlsx" multiple onchange="hf('availability',event)" style="display:none"></label>`;
-  h+=`<label class="up-box${dC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${dC?"✅":"👤"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Duve Export</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${dC?"1 ficheiro":"CSV (opcional)"}</div><input type="file" accept=".csv" onchange="hf('duve',event)" style="display:none"></label>`;
+  h+=`<label class="up-box${rC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${rC?"✅":"📋"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Reservation Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${rC?rC+" ficheiro(s)":"Mews .xlsx (vários)"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('reservation',event)" style="display:none"></label>`;
+  h+=`<label class="up-box${aC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${aC?"✅":"📊"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Availability Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${aC?aC+" ficheiro(s)":"Mews .xlsx (1/prop)"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('availability',event)" style="display:none"></label>`;
+  h+=`<label class="up-box${dC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${dC?"✅":"👤"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Duve Export</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${dC?"1 ficheiro":"CSV (opcional)"}</div><input type="file" accept=".csv" onchange="addFiles('duve',event)" style="display:none"></label>`;
   h+=`</div>`;
-  h+=`<button class="up-btn" onclick="upload()" ${rC&&!st.uping?"":"disabled"}>${st.uping?"⏳ "+st.umsg:"🚀 Processar e Activar Dashboard"}</button>`;
-  if(st.umsg&&!st.uping)h+=`<div class="${st.umsg.includes("Erro")?"err":"ok-msg"}">${st.umsg}</div>`;
+  h+=`<button class="up-btn" onclick="processFiles()" ${rC&&!st.uping?"":"disabled"}>${st.uping?"⏳ "+st.umsg:"🚀 Processar (${pendingFiles.length} ficheiros)"}</button>`;
+  if(st.umsg&&!st.uping)h+=`<div class="msg ${st.umsg.includes("❌")?"err":"ok"}">${st.umsg}</div>`;
+  // Show processing log
+  if(D.log.length){h+=`<div style="margin-top:16px;text-align:left;background:#12162a;border-radius:6px;padding:10px;font-size:9px;max-height:150px;overflow-y:auto">`;D.log.forEach(l=>{h+=`<div style="color:${l.includes("❌")?"#ef4444":"#22c55e"};margin-bottom:2px">${l}</div>`});h+=`</div>`}
   h+=`</div>`;return h;
 }
 
 function sp(p){st.prop=p;st.sel=null;render()}
 function stab(t){st.tab=t;render()}
 function sd(d){st.viewDays=d;render()}
-function np(){const d=new Date(st.vs);d.setDate(d.getDate()-st.viewDays);st.vs=d.toISOString().split("T")[0];render()}
-function nn(){const d=new Date(st.vs);d.setDate(d.getDate()+st.viewDays);st.vs=d.toISOString().split("T")[0];render()}
+function np(){const d=new Date(st.vs+"T12:00:00");d.setDate(d.getDate()-st.viewDays);st.vs=d.toISOString().split("T")[0];render()}
+function nn(){const d=new Date(st.vs+"T12:00:00");d.setDate(d.getDate()+st.viewDays);st.vs=d.toISOString().split("T")[0];render()}
 function nt(){const d=new Date();d.setDate(d.getDate()-1);st.vs=d.toISOString().split("T")[0];render()}
 function sel(id){st.sel=D.reservations.find(r=>r.id===id)||null;render()}
 function csel(){st.sel=null;render()}
 
-load();
+render();
 </script>
 </body>
 </html>
