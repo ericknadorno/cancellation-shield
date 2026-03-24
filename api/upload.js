@@ -104,6 +104,7 @@ function parseReservations(buffer){
     }
   }
   const data=XLSX.utils.sheet_to_json(ws,{defval:''});
+  console.log('RAW_DATA:', data.length, 'rows, statuses:', JSON.stringify([...new Set(data.map(r=>r.Status))].slice(0,10)));
   const now=new Date();
   const reservations=data.filter(r=>r.Identifier&&(r.Status==='Confirmed'||r.Status==='Checked in')).map(r=>{
     const arrival=r.Arrival?new Date(r.Arrival):null;
@@ -244,6 +245,7 @@ console.log('FILES:', body.files.map(f => f.type + ':' + (f.name||'?')));
           if(file.type==='reservation'){
             const{reservations}=parseReservations(buf);
             console.log('PARSED:', file.name, reservations.length, 'reservations');
+            console.log('SHEET_RAW:', file.name, data.length, 'rows, statuses:', [...new Set(data.map(r=>r.Status))]);
             const ids=new Map(exRes.map((r,i)=>[r.id,i]));
             for(const r of reservations){const idx=ids.get(r.id);if(idx!==undefined)exRes[idx]=r;else{exRes.push(r);ids.set(r.id,exRes.length-1)}}
           }else if(file.type==='availability'){
