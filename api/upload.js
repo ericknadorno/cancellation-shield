@@ -92,6 +92,21 @@ function parseReservations(buffer) {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const ws = wb.Sheets['Reservations'];
   if (!ws) return [];
+  
+  // Detect property from Parameters sheet
+  let detectedProp = '';
+  const params = wb.Sheets['Parameters'];
+  if (params) {
+    const pData = XLSX.utils.sheet_to_json(params, { header: 1 });
+    const entRow = pData.find(r => String(r[0] || '').includes('Enterprise'));
+    if (entRow) {
+      const v = String(entRow[1] || '');
+      if (v.includes('Alegria')) detectedProp = 'Alegria';
+      else if (v.includes('Barbara II') || v.includes('Santa Barbara II')) detectedProp = 'SB II';
+      else if (v.includes('Barbara I') || v.includes('Santa Barbara I')) detectedProp = 'SB I';
+    }
+  }
+  
   const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
   const now = new Date();
   return data.filter(r => r.Identifier && (r.Status === 'Confirmed' || r.Status === 'Checked in')).map(r => {
@@ -104,16 +119,15 @@ function parseReservations(buffer) {
     const adr = r['Average rate (nightly)'] || (r['Cancelled cost'] && nights ? r['Cancelled cost'] / nights : 0);
     const hasNoContact = (!r.Email || r.Email === '') && (!r.Telephone || r.Telephone === '');
     const isSolo = r['Person count'] === 1;
-    // Detect property
-    let prop = r.Property || '';
-    if (!prop) {
-      const rc = (r['Requested category'] || '').toLowerCase();
-      if (rc.match(/[0-9]+[de]/i) || rc.includes('rcd') || rc.includes('rce')) prop = 'Alegria';
-    }
+    // Use detected property from Parameters sheet
+    const prop = detectedProp || r.Property || '';
+    // Clean room number — remove property prefix like "SBII " 
+    let room = r['Space number'] || (r['Requested category'] || '').split(' - ')[0];
+    room = String(room).replace(/^SBII\s*/i, '').replace(/^SBI\s*/i, '').replace(/^ALE\s*/i, '').trim();
     return {
       id: r.Identifier, guest: `${r['First name'] || ''} ${r['Last name'] || ''}`.trim(),
-      prop, room: r['Space number'] || (r['Requested category'] || '').split(' - ')[0],
-      roomType: r['Requested category'] || '', arrival: arrival ? arrival.toISOString().split('T')[0] : '',
+      prop, room, roomType: r['Requested category'] || '',
+      arrival: arrival ? arrival.toISOString().split('T')[0] : '',
       departure: departure ? departure.toISOString().split('T')[0] : '', nights, daysUntil, leadTimeDays,
       rate: r.Rate || '', adr: Math.round(adr || 0), total: Math.round(r['Total amount'] || 0),
       source: r['Reservation source'] || '', payment: r['Automatic payment'] || '',
