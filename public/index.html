@@ -92,28 +92,22 @@ async function loadData(){
 }
 
 async function uploadFiles(){
-  state.uploading=true;state.uploadStatus="A processar ficheiros...";render();
+  state.uploading=true;
+  const allFiles=[...pendingFiles.reservation.map(f=>({file:f,type:"reservation"})),...pendingFiles.availability.map(f=>({file:f,type:"availability"}))];
+  if(pendingFiles.duve)allFiles.push({file:pendingFiles.duve,type:"duve"});
+  const total=allFiles.length;let done=0;let lastResult=null;
   try{
-    const files=[];
-    for(const f of pendingFiles.reservation){
-      const b64=await fileToBase64(f);
-      files.push({type:"reservation",content:b64,name:f.name});
+    for(const item of allFiles){
+      done++;state.uploadStatus=`A enviar ficheiro ${done}/${total}: ${item.file.name}...`;render();
+      const b64=await fileToBase64(item.file);
+      const r=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({files:[{type:item.type,content:b64,name:item.file.name}]})});
+      const d=await r.json();
+      if(d.status!=="ok"){state.uploadStatus=`Erro no ficheiro ${item.file.name}: ${d.error}`;state.uploading=false;render();return}
+      lastResult=d;
     }
-    for(const f of pendingFiles.availability){
-      const b64=await fileToBase64(f);
-      files.push({type:"availability",content:b64,name:f.name});
-    }
-    if(pendingFiles.duve){
-      const b64=await fileToBase64(pendingFiles.duve);
-      files.push({type:"duve",content:b64,name:pendingFiles.duve.name});
-    }
-    const r=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({files})});
-    const d=await r.json();
-    if(d.status==="ok"){
-      state.uploadStatus=`Processado: ${d.summary.total} reservas, ${d.summary.high} HIGH risk`;
-      pendingFiles={reservation:[],availability:[],duve:null};
-      await loadData();
-    }else{state.uploadStatus="Erro: "+d.error}
+    state.uploadStatus=`✅ Processado: ${lastResult.summary.total} reservas, ${lastResult.summary.high} HIGH risk, ${lastResult.summary.medium} MEDIUM, ${lastResult.summary.low} LOW`;
+    pendingFiles={reservation:[],availability:[],duve:null};
+    await loadData();
   }catch(e){state.uploadStatus="Erro: "+e.message}
   state.uploading=false;render();
 }
