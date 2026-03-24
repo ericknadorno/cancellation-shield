@@ -237,12 +237,13 @@ module.exports=async function handler(req,res){
           if(ex._raw){exRes=ex._raw.reservations||[];exAvail=ex._raw.availability||{};exDuve=ex._raw.duveMap||{}}
         }
       }catch(e){}
-
+console.log('FILES:', body.files.map(f => f.type + ':' + (f.name||'?')));
       for(const file of body.files){
         try{
           const buf=Buffer.from(file.content,'base64');
           if(file.type==='reservation'){
             const{reservations}=parseReservations(buf);
+            console.log('PARSED:', file.name, reservations.length, 'reservations');
             const ids=new Map(exRes.map((r,i)=>[r.id,i]));
             for(const r of reservations){const idx=ids.get(r.id);if(idx!==undefined)exRes[idx]=r;else{exRes.push(r);ids.set(r.id,exRes.length-1)}}
           }else if(file.type==='availability'){
@@ -250,7 +251,7 @@ module.exports=async function handler(req,res){
           }else if(file.type==='duve'){
             Object.assign(exDuve,parseDuve(buf.toString('utf-8')));
           }
-        }catch(e){console.error('File error:',file.name,e.message)}
+        }catch(e){console.error('File error:',file.name,e.message,e.stack)}
       }
 
       const scored=exRes.map(r=>{
