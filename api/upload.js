@@ -254,27 +254,47 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST') {
       const contentType = req.headers['content-type'] || '';
 
-      // Handle multipart form data (file uploads)
       if (contentType.includes('multipart/form-data') || contentType.includes('application/octet-stream')) {
-        // For Zapier/webhook: expect JSON body with base64 files
-        return res.status(400).json({ error: 'Use /api/upload for file uploads' });
+        return res.status(400).json({ error: 'Use JSON body with base64 files' });
       }
 
-      // Handle JSON body with base64-encoded files
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       if (!body || !body.files) return res.status(400).json({ error: 'Missing files array in body' });
 
+      // Load existing data from blob to accumulate
       let allReservations = [];
       let allAvailability = {};
       let duveMap = {};
+      try {
+        const blobs = await list({ prefix: 'shield-data' });
+        if (blobs.blobs.length > 0) {
+          const latest = blobs.blobs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))[0];
+          const existingResp = await fetch(latest.url);
+          const existing = await existingResp.json();
+          if (existing.reservations) {
+            // Keep raw reservation data (before scoring) - re-extract what we need
+            allReservations = existing.reservations.map(r => ({...r}));
+          }
+          if (existing.availability) {
+            allAvailability = existing.availability;
+          }
+          if (existing._duveMap) {
+            duveMap = existing._duveMap;
+          }
+        }
+      } catch(e) { /* no existing data, start fresh */ }
 
+      // Process new files and merge
       for (const file of body.files) {
         const buffer = Buffer.from(file.content, 'base64');
         if (file.type === 'reservation') {
           const parsed = parseReservations(buffer);
-          // Merge, dedup by id
           const existingIds = new Set(allReservations.map(r => r.id));
-          parsed.forEach(r => { if (!existingIds.has(r.id)) { allReservations.push(r); existingIds.add(r.id); } });
+          parsed.forEach(r => { if (!existingIds.has(r.id)) { allReservations.push(r); existingIds.add(r.id); } else {
+            // Update existing reservation with newer data
+            const idx = allReservations.findIndex(x => x.id === r.id);
+            if (idx >= 0) allReservations[idx] = r;
+          }});
         } else if (file.type === 'availability') {
           const { prop, data } = parseAvailability(buffer);
           allAvailability[prop] = data;
@@ -321,6 +341,7 @@ module.exports = async function handler(req, res) {
           obDays: overbooking.length, obNights: overbooking.reduce((s, o) => s + o.ob, 0),
         },
         generated: new Date().toISOString(),
+        _duveMap: duveMap,
       };
 
       // Store in Vercel Blob
