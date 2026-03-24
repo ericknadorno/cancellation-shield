@@ -102,7 +102,7 @@ async function uploadFiles(){
       const b64=await fileToBase64(item.file);
       const r=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({files:[{type:item.type,content:b64,name:item.file.name}]})});
       const d=await r.json();
-      if(d.status!=="ok"){state.uploadStatus=`Erro no ficheiro ${item.file.name}: ${d.error}`;state.uploading=false;render();return}
+      if(d.status!=="ok"){state.uploadStatus=`Erro no ficheiro ${item.file.name}: ${JSON.stringify(d)}`;state.uploading=false;render();return}
       lastResult=d;
     }
     state.uploadStatus=`✅ Processado: ${lastResult.summary.total} reservas, ${lastResult.summary.high} HIGH risk, ${lastResult.summary.medium} MEDIUM, ${lastResult.summary.low} LOW`;
