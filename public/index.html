@@ -93,7 +93,15 @@ async function upload(){
   st.uping=false;render();
 }
 
-function hf(type,e){const f=Array.from(e.target.files);if(type==="duve")pf.duve=f[0];else pf[type]=[...pf[type],...f];render()}
+async function hf(type,e){
+  const files=Array.from(e.target.files);
+  for(const f of files){
+    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=()=>rej('read error');r.readAsDataURL(f)});
+    const item={name:f.name,content:b64,type:type};
+    if(type==="duve")pf.duve=item;else pf[type]=[...pf[type],item];
+  }
+  render();
+}
 function gf(){return D?st.prop==="ALL"?D.reservations:D.reservations.filter(x=>x.prop===st.prop):[]}
 function go(){return D?st.prop==="ALL"?D.overbooking:D.overbooking.filter(x=>x.prop===st.prop):[]}
 function gd(){const a=[];for(let i=0;i<st.viewDays;i++){const d=new Date(st.vs);d.setDate(d.getDate()+i);a.push(d.toISOString().split("T")[0])}return a}
