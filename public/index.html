@@ -77,20 +77,19 @@ async function load(){try{const r=await fetch("/api/data");const d=await r.json(
 
 async function upload(){
   st.uping=true;
-  const all=[...pf.reservation.map(f=>({file:f,type:"reservation"})),...pf.availability.map(f=>({file:f,type:"availability"}))];
-  if(pf.duve)all.push({file:pf.duve,type:"duve"});
+  const all=[...pf.reservation,...pf.availability];
+  if(pf.duve)all.push(pf.duve);
   let done=0;
   try{
     for(const item of all){
-      done++;st.umsg=`A enviar ${done}/${all.length}: ${item.file.name}`;render();
-      const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(item.file)});
-      const r=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({files:[{type:item.type,content:b64,name:item.file.name}]})});
+      done++;st.umsg=`A enviar ${done}/${all.length}: ${item.name}`;render();
+      const r=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({files:[{type:item.type,content:item.content,name:item.name}]})});
       const d=await r.json();
       if(d.status==="error"){st.umsg="Erro: "+(d.error||JSON.stringify(d));st.uping=false;render();return}
     }
     st.umsg="";pf={reservation:[],availability:[],duve:null};
     await load();
-  }catch(e){st.umsg="Erro: "+e.message}
+  }catch(e){st.umsg="Erro: "+String(e)}
   st.uping=false;render();
 }
 
