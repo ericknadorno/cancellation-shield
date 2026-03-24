@@ -325,7 +325,7 @@ module.exports = async function handler(req, res) {
 
       // Store in Vercel Blob
       const blob = await put('shield-data/latest.json', JSON.stringify(output), {
-        access: 'public', contentType: 'application/json', addRandomSuffix: false,
+        access: 'private', contentType: 'application/json', addRandomSuffix: false,
       });
 
       return res.status(200).json({
