@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cancellation Shield — The Haus Group</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'JetBrains Mono',monospace;background:#0c0f1a;color:#c8d0e0;overflow-x:hidden}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#0c0f1a}
+::-webkit-scrollbar-thumb{background:#1e2545;border-radius:3px}
+.header{background:#12162a;border-bottom:1px solid #1e2545;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#ef4444,#f59e0b,#22c55e);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:#fff}
+.logo-text{font-size:14px;font-weight:800;letter-spacing:1px;color:#f0f4ff}
+.logo-sub{font-size:9px;color:#4a5280;letter-spacing:2px}
+.prop-btns{display:flex;gap:4px}
+.prop-btn{padding:5px 12px;border-radius:5px;border:1px solid #1e2545;background:#12162a;color:#4a5280;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
+.prop-btn.active{border-color:#4f6ef7;background:#1e3a8a;color:#93b4ff}
+.kpis{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid #1e2545}
+.kpi{padding:10px 12px;text-align:center}
+.kpi-label{font-size:8px;color:#4a5280;font-weight:700;letter-spacing:1.5px;margin-bottom:2px}
+.kpi-value{font-size:22px;font-weight:900;line-height:1.1}
+.kpi-sub{font-size:9px;color:#3a4270;margin-top:1px}
+.tabs{display:flex;border-bottom:1px solid #1e2545;background:#0e1125}
+.tab{padding:8px 18px;background:transparent;border:none;border-bottom:2px solid transparent;color:#4a5280;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px}
+.tab.active{border-bottom-color:#4f6ef7;color:#93b4ff}
+.nav{display:flex;align-items:center;gap:6px;padding:0 14px;margin-left:auto}
+.nav-btn{background:#1e2545;border:none;color:#7080b0;padding:3px 7px;border-radius:3px;cursor:pointer;font-size:10px;font-family:inherit}
+.nav-btn.active{background:#1e3a8a;color:#93b4ff;border:1px solid #4f6ef7}
+.content{display:flex}
+.main{flex:1;overflow:hidden}
+.timeline-wrap{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 158px)}
+.timeline{display:inline-flex;min-width:100%}
+.tl-labels{flex-shrink:0;position:sticky;left:0;z-index:10;background:#0c0f1a}
+.tl-label{display:flex;align-items:center;padding:0 6px;border-bottom:1px solid #12162a;border-right:1px solid #1e254540;font-size:9px}
+.tl-cell{border-bottom:1px solid #0e1125;display:flex;align-items:center;justify-content:center;transition:opacity .1s}
+.tl-cell.res{cursor:pointer}.tl-cell.res:hover{opacity:1!important}
+.table-wrap{padding:14px;overflow-y:auto;max-height:calc(100vh - 158px)}
+.table{background:#12162a;border-radius:6px;overflow:hidden;border:1px solid #1e2545}
+.table-hdr{padding:6px 8px;border-bottom:1px solid #1e2545;font-size:8px;font-weight:800;color:#3a4270;letter-spacing:1px;display:grid;gap:1px}
+.table-row{padding:4px 8px;border-bottom:1px solid #1e254530;font-size:10px;cursor:pointer;display:grid;gap:1px;transition:background .1s}
+.table-row:hover{background:rgba(79,110,247,.08)}
+.panel{width:320px;border-left:1px solid #1e2545;background:#12162a;overflow-y:auto;max-height:calc(100vh - 158px);flex-shrink:0}
+.panel-risk{margin:12px;padding:14px;border-radius:6px}
+.factor-tag{display:inline-block;font-size:8px;padding:2px 6px;border-radius:3px;background:#ef444418;color:#ef9090;border:1px solid #ef444420;margin:1px}
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh;gap:16px}
+.loading-spinner{width:40px;height:40px;border:3px solid #1e2545;border-top:3px solid #4f6ef7;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.upload-zone{max-width:600px;margin:40px auto;padding:30px;text-align:center}
+.upload-box{border:2px dashed #1e2545;border-radius:12px;padding:20px;margin:8px 0;cursor:pointer;transition:all .2s}
+.upload-box:hover{border-color:#4f6ef7;background:#1e3a8a10}
+.upload-box.done{border-color:#22c55e;background:#22c55e08}
+.upload-btn{margin-top:16px;padding:10px 24px;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.upload-btn:disabled{opacity:.4;cursor:not-allowed}
+.upload-btn:hover:not(:disabled){background:#3b5de7}
+.status-bar{padding:6px 20px;background:#12162a;border-bottom:1px solid #1e2545;font-size:9px;color:#4a5280;display:flex;align-items:center;gap:8px}
+.status-dot{width:6px;height:6px;border-radius:50%}
+.legend{display:flex;gap:14px;padding:6px 12px;border-top:1px solid #1e2545;font-size:9px;position:sticky;left:0}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-dot{width:10px;height:10px;border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading"><div class="loading-spinner"></div><div style="color:#4a5280;font-size:11px">A carregar dados...</div></div></div>
+<script>
+const SHORT={Alegria:"ALE","SB I":"SBI","SB II":"SBII"};
+const PROPS=["Alegria","SB I","SB II"];
+const fmt=d=>{if(!d)return"";const p=d.split("-");return p[2]+"/"+p[1]};
+const dn=d=>["Dom","Seg","Ter","Qua","Qui","Sex","Sab"][new Date(d).getDay()];
+const riskColor=l=>l==="HIGH"?"#ef4444":l==="MEDIUM"?"#f59e0b":"#22c55e";
+const overrideColor=o=>o==="NR+Paid"?"#60a5fa":o&&o.includes("preCheckedIn")?"#4ade80":null;
+const cellBg=r=>overrideColor(r.override)||riskColor(r.level);
+const today=new Date().toISOString().split("T")[0];
+
+let D=null;
+let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,uploading:false,uploadStatus:""};
+state.viewStart=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().split("T")[0]})();
+
+// Track uploaded files for processing
+let pendingFiles={reservation:[],availability:[],duve:null};
+
+async function loadData(){
+  try{
+    const r=await fetch("/api/data");
+    const d=await r.json();
+    if(d.status==="no_data"){D=null;render();return}
+    D=d;render();
+  }catch(e){D=null;render()}
+}
+
+async function uploadFiles(){
+  state.uploading=true;state.uploadStatus="A processar ficheiros...";render();
+  try{
+    const files=[];
+    for(const f of pendingFiles.reservation){
+      const b64=await fileToBase64(f);
+      files.push({type:"reservation",content:b64,name:f.name});
+    }
+    for(const f of pendingFiles.availability){
+      const b64=await fileToBase64(f);
+      files.push({type:"availability",content:b64,name:f.name});
+    }
+    if(pendingFiles.duve){
+      const b64=await fileToBase64(pendingFiles.duve);
+      files.push({type:"duve",content:b64,name:pendingFiles.duve.name});
+    }
+    const r=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({files})});
+    const d=await r.json();
+    if(d.status==="ok"){
+      state.uploadStatus=`Processado: ${d.summary.total} reservas, ${d.summary.high} HIGH risk`;
+      pendingFiles={reservation:[],availability:[],duve:null};
+      await loadData();
+    }else{state.uploadStatus="Erro: "+d.error}
+  }catch(e){state.uploadStatus="Erro: "+e.message}
+  state.uploading=false;render();
+}
+
+function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file)})}
+
+function handleFiles(type,e){
+  const files=Array.from(e.target.files);
+  if(type==="duve")pendingFiles.duve=files[0];
+  else pendingFiles[type]=[...pendingFiles[type],...files];
+  render();
+}
+
+function getFiltered(){return D?state.prop==="ALL"?D.reservations:D.reservations.filter(x=>x.prop===state.prop):[]}
+function getOB(){return D?state.prop==="ALL"?D.overbooking:D.overbooking.filter(x=>x.prop===state.prop):[]}
+function getDays(){const a=[];for(let i=0;i<state.viewDays;i++){const d=new Date(state.viewStart);d.setDate(d.getDate()+i);a.push(d.toISOString().split("T")[0])}return a}
+function getRows(){
+  if(!D)return[];const ps=state.prop==="ALL"?PROPS:[state.prop];const result=[];
+  ps.forEach(p=>{const pR=D.reservations.filter(r=>r.prop===p);const rooms=new Map();
+  pR.forEach(r=>{const rm=r.room||"?";if(!rooms.has(rm))rooms.set(rm,[]);rooms.get(rm).push(r)});
+  [...rooms.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([room,rr])=>result.push({prop:p,room,res:rr}))});return result;
+}
+
+function render(){
+  const app=document.getElementById("app");
+  if(!D){app.innerHTML=renderUploadScreen();return}
+  const res=getFiltered(),ob=getOB(),days=getDays(),rows=getRows();
+  const high=res.filter(r=>r.level==="HIGH"),med=res.filter(r=>r.level==="MEDIUM"),low=res.filter(r=>r.level==="LOW");
+  const retention=res.filter(r=>r.level!=="LOW"&&r.daysUntil>3).sort((a,b)=>a.level===b.level?a.daysUntil-b.daysUntil:a.level==="HIGH"?-1:1);
+  const cW=state.viewDays<=14?56:state.viewDays<=30?38:state.viewDays<=60?22:14;
+  const rH=26,lW=110,sel=state.sel;
+  let h="";
+  // Header
+  h+=`<div class="header"><div class="logo"><div class="logo-icon">CS</div><div><div class="logo-text">CANCELLATION SHIELD</div><div class="logo-sub">v6 — THE HAUS GROUP — ${D.generated?D.generated.split("T")[0]:""}</div></div></div><div class="prop-btns">`;
+  ["ALL",...PROPS].forEach(p=>{h+=`<button class="prop-btn${state.prop===p?" active":""}" onclick="setProp('${p}')">${p}</button>`});
+  h+=`<button class="prop-btn" onclick="D=null;render()" style="margin-left:12px;border-color:#f59e0b30;color:#f59e0b">↑ Upload</button></div></div>`;
+  // Status bar
+  h+=`<div class="status-bar"><div class="status-dot" style="background:#22c55e"></div>Dashboard activo — ${D.summary.total} reservas — Dados de ${D.generated?D.generated.split("T")[0]+' '+D.generated.split("T")[1]?.slice(0,5):""}</div>`;
+  // KPIs
+  h+=`<div class="kpis">`;
+  [{l:"RESERVAS",v:res.length,c:"#f0f4ff"},{l:"HIGH RISK",v:high.length,s:"€"+Math.round(high.reduce((s,r)=>s+r.total,0)/1000)+"K",c:"#ef4444"},{l:"MEDIUM",v:med.length,s:"€"+Math.round(med.reduce((s,r)=>s+r.total,0)/1000)+"K",c:"#f59e0b"},{l:"LOW/SAFE",v:low.length,s:low.filter(r=>r.override).length+" overrides",c:"#22c55e"},{l:"RETENÇÃO",v:retention.length,s:"contactar",c:"#60a5fa"},{l:"OB DIAS",v:ob.length,s:ob.reduce((s,o)=>s+o.ob,0)+" unit-nights",c:"#a78bfa"},{l:"OB RECEITA",v:"€"+Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)/1000)+"K",s:"potencial",c:"#c084fc"}].forEach(k=>{h+=`<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-value" style="color:${k.c}">${k.v}</div>${k.s?`<div class="kpi-sub">${k.s}</div>`:""}</div>`});
+  h+=`</div>`;
+  // Tabs + Nav
+  h+=`<div class="tabs">`;
+  [{id:"timeline",icon:"▦",l:"Timeline"},{id:"retention",icon:"☎",l:"Retenção"},{id:"overbooking",icon:"⊕",l:"Overbooking"}].forEach(t=>{h+=`<button class="tab${state.tab===t.id?" active":""}" onclick="setTab('${t.id}')"><span style="font-size:13px">${t.icon}</span>${t.l}</button>`});
+  h+=`<div class="nav"><button class="nav-btn" onclick="navP()">◀</button><button class="nav-btn active" onclick="navT()">HOJE</button><button class="nav-btn" onclick="navN()">▶</button><span style="color:#3a4270;margin:0 4px">|</span>`;
+  [14,30,60,90].forEach(d=>{h+=`<button class="nav-btn${state.viewDays===d?" active":""}" onclick="setD(${d})">${d}d</button>`});
+  h+=`</div></div><div class="content"><div class="main">`;
+  // TIMELINE
+  if(state.tab==="timeline"){
+    h+=`<div class="timeline-wrap"><div class="timeline"><div class="tl-labels" style="width:${lW}px"><div style="height:28px;background:#12162a;border-bottom:1px solid #1e2545;border-right:1px solid #1e2545"></div>`;
+    rows.forEach((row,i)=>{h+=`<div class="tl-label" style="height:${rH}px;background:${i%2===0?"#0c0f1a":"#0e1125"}"><span style="color:#3a4270;width:32px;font-size:8px;font-weight:700">${SHORT[row.prop]||row.prop}</span><span style="color:#8090c0;font-weight:600">${row.room}</span></div>`});
+    h+=`</div><div style="display:flex">`;
+    days.forEach(day=>{const iT=day===today,iW=[0,6].includes(new Date(day).getDay());
+      h+=`<div style="width:${cW}px;flex-shrink:0"><div style="height:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${iT?"#1e3a8a":"#12162a"};border-bottom:1px solid #1e2545;border-right:1px solid #12162a"><span style="font-size:7px;color:${iT?"#93b4ff":iW?"#4a5280":"#3a4270"};font-weight:600">${dn(day)}</span><span style="font-size:${cW>=38?10:8}px;color:${iT?"#fff":"#6070a0"};font-weight:700">${new Date(day).getDate()}</span></div>`;
+      rows.forEach((row,ri)=>{const r=row.res.find(x=>x.arrival<=day&&x.departure>day);
+        if(!r){h+=`<div class="tl-cell" style="height:${rH}px;background:${iW?"#0b0e18":"#0c0f1a"}"></div>`;return}
+        const isA=r.arrival===day,bg=cellBg(r);
+        h+=`<div class="tl-cell res" style="height:${rH}px;background:${bg};opacity:${isA?1:.7};${isA?"border-radius:3px 0 0 3px;":""}" onclick="selR('${r.id}')" title="${r.guest} | ${r.level} (${r.score})">${isA&&cW>=30?`<span style="font-size:7px;color:#fff;font-weight:800;text-shadow:0 1px 3px #000;overflow:hidden;white-space:nowrap;padding:0 2px">${(r.guest.split(" ").pop()||"").slice(0,5)}</span>`:""}</div>`;
+      });h+=`</div>`});
+    h+=`</div></div><div class="legend">`;
+    [{c:"#ef4444",l:"HIGH risk"},{c:"#f59e0b",l:"MEDIUM"},{c:"#22c55e",l:"LOW"},{c:"#60a5fa",l:"NR+Paid"},{c:"#4ade80",l:"Duve preCheckedIn"}].forEach(x=>{h+=`<div class="legend-item"><div class="legend-dot" style="background:${x.c}"></div><span style="color:#4a5280">${x.l}</span></div>`});
+    h+=`</div></div>`;
+  }
+  // RETENTION
+  if(state.tab==="retention"){
+    const c="32px 40px 48px 44px 130px 52px 36px 36px 52px 1fr";
+    h+=`<div class="table-wrap"><div style="font-size:12px;font-weight:800;margin-bottom:10px;color:#f0f4ff">Reservas para contactar — ${retention.length}</div><div class="table"><div class="table-hdr" style="grid-template-columns:${c}"><span>#</span><span>SCORE</span><span>RISCO</span><span>PROP</span><span>GUEST</span><span>ARRIVAL</span><span>N</span><span>DIAS</span><span>TMPL</span><span>OFERTA</span></div>`;
+    retention.forEach((r,i)=>{h+=`<div class="table-row" style="grid-template-columns:${c}" onclick="selR('${r.id}')"><span style="color:#4a5280">${i+1}</span><span style="font-weight:800;color:${riskColor(r.level)}">${r.score}</span><span style="font-weight:700;color:${riskColor(r.level)};font-size:9px">${r.level}</span><span style="color:#5a6a9a;font-size:9px">${SHORT[r.prop]||""}</span><span style="color:#c8d0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.guest}</span><span style="color:#6a7aaa">${fmt(r.arrival)}</span><span style="color:#6a7aaa">${r.nights}n</span><span style="color:${r.daysUntil<=7?"#ef4444":"#6a7aaa"};font-weight:${r.daysUntil<=7?800:400}">${r.daysUntil}d</span><span style="color:#4f6ef7;font-weight:700">${r.template}</span><span style="color:#4a5280;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.offer}</span></div>`});
+    h+=`</div></div>`;
+  }
+  // OVERBOOKING
+  if(state.tab==="overbooking"){
+    const c="64px 36px 44px 48px 40px 44px 1fr 56px";
+    h+=`<div class="table-wrap"><div style="font-size:12px;font-weight:800;margin-bottom:4px;color:#f0f4ff">Overbooking — Apartamentos para abrir à venda</div><div style="font-size:9px;color:#4a5280;margin-bottom:12px">Ocup ≥70% + HIGH risk. Máx 40% das HIGH. Reduz 1 c/ retenção activa.</div>`;
+    if(ob.length===0){h+=`<div style="padding:40px;text-align:center;color:#3a4270">Nenhuma oportunidade</div>`}
+    else{h+=`<div class="table"><div class="table-hdr" style="grid-template-columns:${c}"><span>DATA</span><span>DIA</span><span>PROP</span><span>OCUP</span><span>HIGH</span><span>OB</span><span>TIPO APT</span><span>RATE</span></div>`;
+    ob.forEach(o=>{h+=`<div class="table-row" style="grid-template-columns:${c}"><span style="color:#c8d0e0;font-weight:700">${fmt(o.date)}</span><span style="color:#4a5280">${o.dow}</span><span style="color:#6a7aaa;font-size:9px">${SHORT[o.prop]||""}</span><span style="color:${o.occPct>=90?"#ef4444":"#f59e0b"};font-weight:800">${Math.round(o.occPct)}%</span><span style="color:#ef4444;font-weight:800">${o.nHigh}</span><span style="color:#a78bfa;font-weight:900;font-size:13px">+${o.ob}</span><span style="color:#5a6a9a;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.rooms}</span><span style="color:#22c55e;font-weight:700">€${o.avgRate}</span></div>`});
+    h+=`<div style="padding:8px;border-top:1px solid #1e2545;font-size:10px;color:#4a5280;display:flex;justify-content:space-between"><span>${ob.length} dias | ${ob.reduce((s,o)=>s+o.ob,0)} unit-nights</span><span style="color:#22c55e;font-weight:700">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()}</span></div></div>`}
+    h+=`</div>`;
+  }
+  h+=`</div>`;
+  // PANEL
+  if(sel){
+    const bg=riskColor(sel.level);
+    h+=`<div class="panel"><div style="padding:12px 14px;border-bottom:1px solid #1e2545;display:flex;justify-content:space-between;align-items:start"><div><div style="font-size:14px;font-weight:800;color:#f0f4ff">${sel.guest}</div><div style="font-size:10px;color:#4a5280">${sel.prop} — ${sel.room}</div></div><button onclick="closeSel()" style="background:none;border:none;color:#4a5280;font-size:16px;cursor:pointer;font-family:inherit">✕</button></div>`;
+    h+=`<div class="panel-risk" style="background:${bg}18;border:1px solid ${bg}30"><span style="font-size:26px;font-weight:900;color:${bg}">${sel.score}</span><span style="font-size:11px;color:${bg};margin-left:8px;font-weight:800">${sel.level}</span>${sel.override?`<span style="display:inline-block;font-size:8px;padding:2px 6px;border-radius:3px;background:#1e2545;color:#6a7aaa;margin-left:8px">${sel.override}</span>`:""}</div>`;
+    h+=`<div style="padding:0 14px">`;
+    [{l:"Arrival",v:fmt(sel.arrival)+" ("+sel.daysUntil+"d)"},{l:"Departure",v:fmt(sel.departure)},{l:"Noites",v:sel.nights},{l:"Rate Plan",v:sel.rate},{l:"ADR",v:"€"+sel.adr},{l:"Total",v:"€"+sel.total},{l:"Canal",v:sel.source},{l:"Pagamento",v:sel.payment||"—"},{l:"Email",v:sel.email||"—"},{l:"Telefone",v:sel.phone||"—"},{l:"Template",v:sel.template},{l:"Oferta",v:sel.offer}].forEach(d=>{h+=`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e254520;font-size:10px"><span style="color:#4a5280">${d.l}</span><span style="color:#c8d0e0;font-weight:500;text-align:right;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.v}</span></div>`});
+    h+=`</div>`;
+    if(sel.factors&&sel.factors.length){h+=`<div style="padding:10px 14px"><div style="font-size:8px;font-weight:800;color:#3a4270;letter-spacing:1.5px;margin-bottom:6px">FACTORES DE RISCO</div>`;sel.factors.forEach(f=>{h+=`<span class="factor-tag">${f}</span>`});h+=`</div>`}
+    h+=`</div>`;
+  }
+  h+=`</div>`;
+  app.innerHTML=h;
+}
+
+function renderUploadScreen(){
+  const rC=pendingFiles.reservation.length,aC=pendingFiles.availability.length,dC=pendingFiles.duve?1:0;
+  let h=`<div class="header"><div class="logo"><div class="logo-icon">CS</div><div><div class="logo-text">CANCELLATION SHIELD</div><div class="logo-sub">v6 — THE HAUS GROUP</div></div></div></div>`;
+  h+=`<div class="upload-zone">`;
+  h+=`<div style="font-size:48px;margin-bottom:12px">🛡️</div>`;
+  h+=`<div style="font-size:18px;font-weight:800;color:#f0f4ff;margin-bottom:4px">Cancellation Shield</div>`;
+  h+=`<div style="font-size:11px;color:#4a5280;margin-bottom:24px">Faz upload dos ficheiros do Mews e Duve</div>`;
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">`;
+  // Reservation
+  h+=`<label class="upload-box${rC?" done":""}"><div style="font-size:24px;margin-bottom:6px">${rC?"✅":"📋"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Reservation Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${rC?rC+" ficheiro(s)":"Mews .xlsx"}</div><input type="file" accept=".xlsx" multiple onchange="handleFiles('reservation',event)" style="display:none"></label>`;
+  // Availability
+  h+=`<label class="upload-box${aC?" done":""}"><div style="font-size:24px;margin-bottom:6px">${aC?"✅":"📊"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Availability Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${aC?aC+" ficheiro(s)":"Mews .xlsx"}</div><input type="file" accept=".xlsx" multiple onchange="handleFiles('availability',event)" style="display:none"></label>`;
+  // Duve
+  h+=`<label class="upload-box${dC?" done":""}"><div style="font-size:24px;margin-bottom:6px">${dC?"✅":"👤"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Duve Export</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${dC?"1 ficheiro":"CSV (opcional)"}</div><input type="file" accept=".csv" onchange="handleFiles('duve',event)" style="display:none"></label>`;
+  h+=`</div>`;
+  const canUpload=rC>0;
+  h+=`<button class="upload-btn" onclick="uploadFiles()" ${canUpload&&!state.uploading?"":"disabled"}>${state.uploading?"⏳ A processar...":"🚀 Processar e Activar Dashboard"}</button>`;
+  if(state.uploadStatus)h+=`<div style="margin-top:12px;font-size:10px;color:${state.uploadStatus.includes("Erro")?"#ef4444":"#22c55e"}">${state.uploadStatus}</div>`;
+  h+=`</div>`;
+  return h;
+}
+
+function setProp(p){state.prop=p;state.sel=null;render()}
+function setTab(t){state.tab=t;render()}
+function setD(d){state.viewDays=d;render()}
+function navP(){const d=new Date(state.viewStart);d.setDate(d.getDate()-state.viewDays);state.viewStart=d.toISOString().split("T")[0];render()}
+function navN(){const d=new Date(state.viewStart);d.setDate(d.getDate()+state.viewDays);state.viewStart=d.toISOString().split("T")[0];render()}
+function navT(){const d=new Date();d.setDate(d.getDate()-1);state.viewStart=d.toISOString().split("T")[0];render()}
+function selR(id){state.sel=D.reservations.find(r=>r.id===id)||null;render()}
+function closeSel(){state.sel=null;render()}
+
+// Auto-load data on start
+loadData();
+</script>
+</body>
+</html>
