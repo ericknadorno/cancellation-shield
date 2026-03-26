@@ -246,7 +246,7 @@ async function processFiles(){
     return{...r,score,level,override,factors,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)};
   });
 
-  // Compute overbooking
+  // Compute overbooking with enriched data
   const ob=[];
   const dnArr=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   const cutoff=new Date(Date.now()+90*864e5).toISOString().split("T")[0];
@@ -261,7 +261,15 @@ async function processFiles(){
         const adj=Math.max(0,n-(hi.some(r=>r.daysUntil>7)?1:0));
         if(adj>0){
           const fr=(dd.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0);
-          ob.push({date:ds,prop,occPct:dd.occPct,nHigh:hi.length,ob:adj,rooms:fr.slice(0,adj).map(rt=>rt.type+" (€"+rt.rate+")").join(", ")||"Any",avgRate:dd.avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()]});
+          const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop()+" ("+r.score+")");
+          ob.push({date:ds,prop,occPct:dd.occPct,nHigh:hi.length,ob:adj,
+            rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),
+            roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")+" €"+rt.rate).join(" | ")||"Qualquer tipo",
+            avgRate:dd.avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],
+            hiGuests:hiGuests.join(", "),
+            week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),
+            month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"})
+          });
         }
       }
     });
@@ -345,11 +353,28 @@ function render(){
     h+=`</table></div>`}
   // OVERBOOKING
   if(st.tab==="overbooking"){
-    h+=`<div class="tbl"><div style="font-size:12px;font-weight:800;margin-bottom:4px;color:#f0f4ff">Overbooking — Apartamentos para vender</div><div style="font-size:9px;color:#4a5280;margin-bottom:12px">Ocup ≥70% + HIGH risk. Máx 40% das HIGH.</div>`;
-    if(!ob.length)h+=`<div style="padding:40px;text-align:center;color:#3a4270">${Object.keys(D.availability).length?"Nenhuma oportunidade no período":"Faz upload dos Availability Reports"}</div>`;
-    else{h+=`<table><tr><th>DATA</th><th>DIA</th><th>PROP</th><th>OCUP</th><th>HIGH</th><th>OB</th><th>TIPO APT</th><th>RATE</th></tr>`;
-    ob.forEach(o=>{h+=`<tr><td style="color:#c8d0e0;font-weight:700">${fmt(o.date)}</td><td style="color:#4a5280">${o.dow}</td><td style="color:#6a7aaa;font-size:9px">${SH[o.prop]||""}</td><td style="color:${o.occPct>=90?"#ef4444":"#f59e0b"};font-weight:800">${Math.round(o.occPct)}%</td><td style="color:#ef4444;font-weight:800">${o.nHigh}</td><td style="color:#a78bfa;font-weight:900;font-size:13px">+${o.ob}</td><td style="color:#5a6a9a;font-size:9px">${o.rooms}</td><td style="color:#22c55e;font-weight:700">€${o.avgRate}</td></tr>`});
-    h+=`</table><div style="padding:8px;font-size:10px;color:#4a5280;display:flex;justify-content:space-between"><span>${ob.length} dias | ${ob.reduce((s,o)=>s+o.ob,0)} nights</span><span style="color:#22c55e;font-weight:700">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()}</span></div>`}
+    h+=`<div class="tbl">`;
+    if(!ob.length){h+=`<div style="padding:40px;text-align:center;color:#3a4270">${Object.keys(D.availability).length?"Nenhuma oportunidade no período":"Faz upload dos Availability Reports"}</div>`}
+    else{
+      // Summary cards per property
+      const obByProp={};ob.forEach(o=>{if(!obByProp[o.prop])obByProp[o.prop]={days:0,nights:0,rev:0};obByProp[o.prop].days++;obByProp[o.prop].nights+=o.ob;obByProp[o.prop].rev+=o.ob*o.avgRate});
+      h+=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">`;
+      PS.forEach(p=>{const d=obByProp[p]||{days:0,nights:0,rev:0};
+        h+=`<div style="background:#12162a;border:1px solid ${d.nights>0?"#a78bfa30":"#1e2545"};border-radius:8px;padding:12px;text-align:center"><div style="font-size:8px;color:#4a5280;font-weight:700;letter-spacing:1px;margin-bottom:4px">${SH[p]}</div><div style="font-size:22px;font-weight:900;color:${d.nights>0?"#a78bfa":"#2a3050"}">+${d.nights}</div><div style="font-size:9px;color:#4a5280">${d.days} dias · €${Math.round(d.rev).toLocaleString()}</div></div>`});
+      h+=`</div>`;
+      // Explanation
+      h+=`<div style="background:#1e3a8a20;border:1px solid #1e3a8a40;border-radius:6px;padding:10px 14px;margin-bottom:14px"><div style="font-size:11px;font-weight:800;color:#93b4ff;margin-bottom:4px">📋 Como usar esta tabela</div><div style="font-size:9px;color:#6a7aaa;line-height:1.5">Cada linha = 1 dia onde podes abrir <b style="color:#a78bfa">apartamentos extra</b> à venda porque temos hóspedes HIGH risk que provavelmente vão cancelar.<br><b style="color:#f0f4ff">ABRIR À VENDA</b> = no Mews, cria uma reserva extra para o tipo de apartamento indicado (ou abre overbooking no Atomize para esse dia).<br><b style="color:#ef4444">QUEM PODE CANCELAR</b> = os hóspedes HIGH risk activos nesse dia (score entre parêntesis).</div></div>`;
+      // Table grouped by week
+      let lastWeekLabel="";
+      h+=`<table><tr><th>DATA</th><th>DIA</th><th>PROP</th><th>OCUP</th><th style="color:#ef4444">HIGH</th><th style="color:#a78bfa">ABRIR</th><th>APARTAMENTO A VENDER</th><th>RATE</th><th style="max-width:200px">QUEM PODE CANCELAR</th></tr>`;
+      ob.forEach(o=>{
+        const weekLabel=o.month+" sem"+o.week;
+        const showWeek=weekLabel!==lastWeekLabel;lastWeekLabel=weekLabel;
+        if(showWeek)h+=`<tr><td colspan="9" style="padding:8px 0 4px;font-size:9px;font-weight:800;color:#4f6ef7;letter-spacing:1px;border-bottom:1px solid #1e2545">${weekLabel.toUpperCase()}</td></tr>`;
+        h+=`<tr><td style="color:#c8d0e0;font-weight:700">${fmt(o.date)}</td><td style="color:#4a5280">${o.dow}</td><td style="color:#6a7aaa;font-size:9px">${SH[o.prop]||""}</td><td style="color:${o.occPct>=90?"#ef4444":"#f59e0b"};font-weight:800">${Math.round(o.occPct)}%</td><td style="color:#ef4444;font-weight:800">${o.nHigh}</td><td style="color:#a78bfa;font-weight:900;font-size:14px;text-align:center">+${o.ob}</td><td style="color:#f0f4ff;font-size:9px;font-weight:600">${o.roomsStr}</td><td style="color:#22c55e;font-weight:700">€${o.avgRate}</td><td style="color:#4a5280;font-size:8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.hiGuests}</td></tr>`});
+      h+=`</table>`;
+      // Bottom summary
+      h+=`<div style="padding:10px;font-size:10px;color:#4a5280;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1e2545;margin-top:8px"><span>${ob.length} dias com oportunidade · ${ob.reduce((s,o)=>s+o.ob,0)} noites extra</span><span style="color:#22c55e;font-weight:800;font-size:12px">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()} receita potencial</span></div>`}
     h+=`</div>`}
   h+=`</div>`;
   // PANEL
