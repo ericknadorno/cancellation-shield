@@ -411,12 +411,14 @@ async function fetchFromMews(){
   try{
     // Calculate time windows
     const now=new Date();
-    const startUtcRes=new Date(now.getFullYear(),now.getMonth(),1);
-    const endUtcRes=new Date(now.getFullYear(),now.getMonth()+3,0);
+    const startUtcRes=new Date(now);
+    startUtcRes.setDate(startUtcRes.getDate()-30);
+    const endUtcRes=new Date(now);
+    endUtcRes.setDate(endUtcRes.getDate()+30);
 
     const startUtcAvail=new Date(now);
     const endUtcAvail=new Date(now);
-    endUtcAvail.setDate(endUtcAvail.getDate()+90);
+    endUtcAvail.setDate(endUtcAvail.getDate()+30);
 
     const startDatesStr={
       Utc:startUtcRes.toISOString()
@@ -469,7 +471,7 @@ async function fetchFromMews(){
       TimeFilter:"Colliding",
       StartUtc:startUtcRes.toISOString(),
       EndUtc:endUtcRes.toISOString(),
-      Limitation:{Count:1000},
+      Limitation:{Count:100},
       Extent:{Reservations:true,Items:false,BusinessSegments:false}
     },"Reservations");
 
