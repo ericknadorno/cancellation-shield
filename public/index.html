@@ -890,32 +890,72 @@ async function processMewsFiles(){
     return{...r,score,level,override,prob,factors,riskRev,natTier:nt,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)};
   });
 
-  // Compute overbooking
+  // Compute overbooking — hybrid: API availability + reservation-based fallback
   const ob=[];
   const dnArr=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   const cutoff=new Date(Date.now()+90*864e5).toISOString().split("T")[0];
+
+  // Step 1: Build per-day reservation count (works for any hotel, any size)
+  const dayOcc={};
+  scored.forEach(r=>{
+    let d=new Date(r.arrival+"T12:00:00");
+    const dep=new Date(r.departure+"T12:00:00");
+    while(d<dep){
+      const ds=d.toISOString().split("T")[0];
+      const key=r.prop+"|"+ds;
+      if(!dayOcc[key])dayOcc[key]={total:0,high:[],adrs:[]};
+      dayOcc[key].total++;
+      if(r.adr>0)dayOcc[key].adrs.push(r.adr);
+      if(r.level==="HIGH")dayOcc[key].high.push(r);
+      d.setDate(d.getDate()+1);
+    }
+  });
+
   PS.forEach(prop=>{
-    const avail=results.avail[prop];
-    if(!avail)return;
-    const pr=scored.filter(r=>r.prop===prop);
-    Object.entries(avail).forEach(([ds,dd])=>{
+    const avail=results.avail[prop]||{};
+    // Collect all days that have either availability data or reservations
+    const allDays=new Set([...Object.keys(avail),...Object.keys(dayOcc).filter(k=>k.startsWith(prop+"|")).map(k=>k.split("|")[1])]);
+
+    allDays.forEach(ds=>{
       if(ds<today||ds>cutoff)return;
-      const hi=pr.filter(r=>r.level==="HIGH"&&r.arrival<=ds&&r.departure>ds);
-      if((dd.occPct||0)>=70&&hi.length>0){
+      const key=prop+"|"+ds;
+      const dd=dayOcc[key]||{total:0,high:[],adrs:[]};
+      const av=avail[ds];
+      const hi=dd.high;
+      if(hi.length<2)return; // Need at least 2 HIGH risk to consider OB
+
+      // Occupancy: prefer API data, fallback to reservation-based estimate
+      // API gives real capacity (spaces) and real occupied count
+      let occPct=0;
+      let capacity=0;
+      if(av&&av.spaces>0){
+        occPct=av.occPct||0;
+        capacity=av.spaces;
+      }
+      // If API occupancy seems unreliable (e.g. too many spaces inflating denominator),
+      // also compute reservation-based occupancy as a cross-check
+      const resvOccPct=dd.total>0&&capacity>0?Math.round(dd.total/capacity*1000)/10:0;
+      // Use whichever is HIGHER — this prevents inflated capacity from hiding real demand
+      if(resvOccPct>occPct)occPct=resvOccPct;
+
+      // avgRate from actual reservations on that day (real revenue data)
+      const avgRate=dd.adrs.length>0?Math.round(dd.adrs.reduce((s,v)=>s+v,0)/dd.adrs.length):(av?.avgRate||100);
+
+      // Trigger OB: occupancy >= 70% AND at least 2 HIGH risk on that day
+      // OR: at least 3 HIGH risk regardless of occupancy (strong signal even without full availability data)
+      if((occPct>=70&&hi.length>=2)||hi.length>=3){
         const n=Math.min(Math.max(1,Math.floor(hi.length*.4)),3);
-        const adj=Math.max(0,n-(hi.some(r=>r.daysUntil>7)?1:0));
-        if(adj>0){
-          const fr=(dd.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0);
-          const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop()+" ("+r.score+")");
-          ob.push({date:ds,prop,occPct:dd.occPct,nHigh:hi.length,ob:adj,
-            rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),
-            roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")+" €"+rt.rate).join(" | ")||"Qualquer tipo",
-            avgRate:dd.avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],
-            hiGuests:hiGuests.join(", "),
-            week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),
-            month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"})
-          });
-        }
+        const adj=Math.max(1,n-(hi.some(r=>r.daysUntil>7)?1:0));
+        const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop()+" ("+r.score+")");
+        const fr=av?(av.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0):[];
+        ob.push({date:ds,prop,occPct,nHigh:hi.length,ob:adj,
+          rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),
+          roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")+" €"+rt.rate).join(" | ")||"Qualquer tipo",
+          avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],
+          hiGuests:hiGuests.join(", "),
+          week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),
+          month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"})
+        });
       }
     });
   });
@@ -1002,31 +1042,63 @@ async function processFiles(){
     return{...r,score,level,override,prob,factors,riskRev,natTier:nt,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)};
   });
 
-  // Compute overbooking with enriched data
+  // Compute overbooking — hybrid: API availability + reservation-based fallback
   const ob=[];
   const dnArr=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
   const cutoff=new Date(Date.now()+90*864e5).toISOString().split("T")[0];
+
+  // Step 1: Build per-day reservation count (works for any hotel, any size)
+  const dayOcc={};
+  scored.forEach(r=>{
+    let d=new Date(r.arrival+"T12:00:00");
+    const dep=new Date(r.departure+"T12:00:00");
+    while(d<dep){
+      const ds=d.toISOString().split("T")[0];
+      const key=r.prop+"|"+ds;
+      if(!dayOcc[key])dayOcc[key]={total:0,high:[],adrs:[]};
+      dayOcc[key].total++;
+      if(r.adr>0)dayOcc[key].adrs.push(r.adr);
+      if(r.level==="HIGH")dayOcc[key].high.push(r);
+      d.setDate(d.getDate()+1);
+    }
+  });
+
   PS.forEach(prop=>{
-    const pa=results.avail[prop];if(!pa)return;
-    const pr=scored.filter(r=>r.prop===prop);
-    Object.entries(pa).forEach(([ds,dd])=>{
+    const avail=results.avail[prop]||{};
+    const allDays=new Set([...Object.keys(avail),...Object.keys(dayOcc).filter(k=>k.startsWith(prop+"|")).map(k=>k.split("|")[1])]);
+
+    allDays.forEach(ds=>{
       if(ds<today||ds>cutoff)return;
-      const hi=pr.filter(r=>r.level==="HIGH"&&r.arrival<=ds&&r.departure>ds);
-      if((dd.occPct||0)>=70&&hi.length>0){
+      const key=prop+"|"+ds;
+      const dd=dayOcc[key]||{total:0,high:[],adrs:[]};
+      const av=avail[ds];
+      const hi=dd.high;
+      if(hi.length<2)return;
+
+      let occPct=0;
+      let capacity=0;
+      if(av&&av.spaces>0){
+        occPct=av.occPct||0;
+        capacity=av.spaces;
+      }
+      const resvOccPct=dd.total>0&&capacity>0?Math.round(dd.total/capacity*1000)/10:0;
+      if(resvOccPct>occPct)occPct=resvOccPct;
+
+      const avgRate=dd.adrs.length>0?Math.round(dd.adrs.reduce((s,v)=>s+v,0)/dd.adrs.length):(av?.avgRate||100);
+
+      if((occPct>=70&&hi.length>=2)||hi.length>=3){
         const n=Math.min(Math.max(1,Math.floor(hi.length*.4)),3);
-        const adj=Math.max(0,n-(hi.some(r=>r.daysUntil>7)?1:0));
-        if(adj>0){
-          const fr=(dd.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0);
-          const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop()+" ("+r.score+")");
-          ob.push({date:ds,prop,occPct:dd.occPct,nHigh:hi.length,ob:adj,
-            rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),
-            roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")+" €"+rt.rate).join(" | ")||"Qualquer tipo",
-            avgRate:dd.avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],
-            hiGuests:hiGuests.join(", "),
-            week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),
-            month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"})
-          });
-        }
+        const adj=Math.max(1,n-(hi.some(r=>r.daysUntil>7)?1:0));
+        const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop()+" ("+r.score+")");
+        const fr=av?(av.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0):[];
+        ob.push({date:ds,prop,occPct,nHigh:hi.length,ob:adj,
+          rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),
+          roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")+" €"+rt.rate).join(" | ")||"Qualquer tipo",
+          avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],
+          hiGuests:hiGuests.join(", "),
+          week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),
+          month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"})
+        });
       }
     });
   });
