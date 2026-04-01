@@ -473,8 +473,8 @@ async function fetchFromMews(){
       Extent:{Reservations:true,Items:false,BusinessSegments:false}
     },"Reservations");
 
-    // Filter for Confirmed or Started only
-    const filteredResv=resvRes.filter(r=>r.State==="Confirmed"||r.State==="Started");
+    // Filter for active reservations (Confirmed, Started, or Processed)
+    const filteredResv=resvRes.filter(r=>r.State==="Confirmed"||r.State==="Started"||r.State==="Processed");
 
     st.umsg="Carregando clientes...";
     render();
