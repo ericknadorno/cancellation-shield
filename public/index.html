@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cancellation Shield v10 — The Haus Group</title>
+<title>Cancellation Shield v10.1 — Universal</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
@@ -71,7 +71,7 @@ body{font-family:'JetBrains Mono',monospace;background:#0c0f1a;color:#c8d0e0;ove
 <div id="app"></div>
 <script>
 // ═══════════════════════════════════════════════════
-// CANCELLATION SHIELD v10 — ADVANCED PREDICTION MODEL
+// CANCELLATION SHIELD v10.1 — ADVANCED PREDICTION MODEL
 // 22 signals · smooth probability curve · real payment data
 // Calibrated with Mews API historical analysis
 // ═══════════════════════════════════════════════════
@@ -263,7 +263,7 @@ function sNatMissing(nat){
   return(!nat||nat==="")?5:0;
 }
 
-function computeRisk(r,duve){
+function computeRisk(r){
   const rate=r.rate||"",pay=(r.paymentStatus||r.payment||"").toLowerCase().trim();
 
   // ─── SAFE OVERRIDES (very high confidence of NOT cancelling) ───
@@ -271,9 +271,7 @@ function computeRisk(r,duve){
   if(r.previousStays>=2&&isNR(rate))return{score:3,level:"LOW",override:"Repeat+NR",prob:4};
   if(r.hasParking)return{score:3,level:"LOW",override:"Safe:Parking",prob:3};
   if(r.hasVoucher)return{score:4,level:"LOW",override:"Safe:Voucher",prob:5};
-  const dv=duve?duve[r.id]:null;
-  if(dv&&dv.status==="preCheckedIn")return{score:3,level:"LOW",override:"Safe:DuveCheckedIn",prob:3};
-  if(r.duveCheckinNotes)return{score:5,level:"LOW",override:"Safe:DuveNotes",prob:3};
+  if(r.guestCheckedIn)return{score:3,level:"LOW",override:"Safe:GuestCheckedIn",prob:3};
   if(r.hasPet)return{score:5,level:"LOW",override:"Safe:Pet",prob:5};
   if(r.previousStays>=3)return{score:5,level:"LOW",override:"Safe:Loyal",prob:5};
 
@@ -312,11 +310,7 @@ function computeRisk(r,duve){
 
   // ─── MODIFIERS ───
   let ov="";
-  if(dv){
-    if(dv.status==="beforeCheckIn"&&dv.terms==="Didn't agree"){s+=5;ov="Duve:noEngagement"}
-    else if(dv.status==="beforeCheckIn"&&dv.terms==="Agreed"){s-=3;ov="Duve:partial"}
-  }
-  if(isNR(rate)&&pay!=="charged"&&pay!=="success"&&pay!=="paid"){s+=10;ov=ov||"NR:noPay"}
+  if(isNR(rate)&&pay!=="charged"&&pay!=="success"&&pay!=="paid"){s+=10;ov="NR:noPay"}
 
   s=Math.max(0,Math.min(Math.round(s),100));
   const prob=cancelProb(s);
@@ -376,7 +370,7 @@ function parseRes(wb){
       hasPet:/bringing your pet.*(Sim|Yes)/i.test(notes),
       hasParking:products.includes("Parking"),
       hasVoucher:!!(r.Voucher&&r.Voucher!==""),
-      duveCheckinNotes:notes.includes("Guest Check-in info by Duve"),
+      guestCheckedIn:notes.includes("Guest Check-in info")||notes.includes("online check-in")||notes.includes("pre-check-in"),
       cardType:r["Payment card type"]||"",
       classifications:r["Customer classifications"]||"",
       lateArrival:/between 2[0-3]|between 0[0-4]/i.test(notes),
@@ -410,19 +404,6 @@ function parseAvail(wb){
     result[key]={occ:tO,spaces:tS,avail:tA,avgRate:rc>0?Math.round(tR/rc):0,occPct:tS>0?Math.round(tO/tS*1000)/10:0,rooms:rts};
   });
   return{prop,data:result};
-}
-
-function parseDuve(text){
-  const lines=text.split("\n");if(lines.length<2)return{};
-  const hdr=lines[0].split(",").map(h=>h.trim().replace(/"/g,""));
-  const ei=hdr.indexOf("External Id"),si=hdr.indexOf("Status");
-  const ti=hdr.findIndex(h=>h.includes("Terms")),pi=hdr.findIndex(h=>h.includes("passport"));
-  if(ei<0)return{};const map={};
-  for(let i=1;i<lines.length;i++){
-    const c=lines[i].split(",").map(x=>x.trim().replace(/"/g,""));
-    if(c[ei])map[c[ei]]={status:c[si]||"",terms:ti>=0?c[ti]||"":"",passport:pi>=0?c[pi]||"":""};
-  }
-  return map;
 }
 
 // ─── MEWS API INTEGRATION ───
@@ -592,7 +573,7 @@ function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,c
     hasPet:/bringing your pet.*(Sim|Yes)/i.test(notes),
     hasParking:false,
     hasVoucher:!!(res.VoucherId),
-    duveCheckinNotes:notes.includes("Guest Check-in info by Duve"),
+    guestCheckedIn:notes.includes("Guest Check-in info")||notes.includes("online check-in")||notes.includes("pre-check-in"),
     cardType:"",
     classifications:"",
     lateArrival:/between 2[0-3]|between 0[0-4]/i.test(notes),
@@ -850,7 +831,7 @@ async function fetchFromMews(){
 }
 
 async function processMewsFiles(){
-  const results={res:[],avail:{},duve:{},logs:[]};
+  const results={res:[],avail:{},logs:[]};
 
   for(const pf of pendingFiles){
     if(pf.type==="mews-reservations"){
@@ -868,7 +849,7 @@ async function processMewsFiles(){
   render();
 
   const scored=results.res.map(r=>{
-    const{score,level,override,prob}=computeRisk(r,results.duve);
+    const{score,level,override,prob}=computeRisk(r);
     const factors=[];
     if(r.previousCancels>0)factors.push("PrevCancel:"+r.previousCancels);
     if(r.previousStays>0)factors.push("Repeat:"+r.previousStays+"x");
@@ -969,14 +950,14 @@ async function processMewsFiles(){
     obMap[key]={ob:o.ob,rooms:o.rooms,rate:o.avgRate,hiRooms:hiRoomIds,hiGuests:hiOnDay.slice(0,3).map(r=>r.guest.split(" ").pop())};
   });
 
-  D={reservations:scored,availability:results.avail,overbooking:ob,obMap,duve:results.duve,log:D.log.concat(results.logs),generated:new Date().toISOString()};
+  D={reservations:scored,availability:results.avail,overbooking:ob,obMap,log:D.log.concat(results.logs),generated:new Date().toISOString()};
   st.phase="dashboard";st.uping=false;st.umsg="";pendingFiles=[];
   render();
   addLog(`Dashboard loaded: ${scored.length} reservations, ${ob.length} OB days`);
 }
 
 // ─── STATE ───
-let D={reservations:[],availability:{},overbooking:[],obMap:{},duve:{},log:[]};
+let D={reservations:[],availability:{},overbooking:[],obMap:{},log:[],backtest:null};
 let st={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:""};
 st.vs=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().split("T")[0]})();
 let pendingFiles=[];
@@ -986,31 +967,25 @@ function addLog(msg){D.log.push(`[${new Date().toLocaleTimeString()}] ${msg}`);c
 // ─── PROCESS ALL FILES ───
 async function processFiles(){
   st.uping=true;st.umsg="A ler ficheiros...";render();
-  const results={res:[],avail:{},duve:{},logs:[]};
+  const results={res:[],avail:{},logs:[]};
   let filesDone=0;
 
   for(const pf of pendingFiles){
     filesDone++;
     st.umsg=`A processar ${filesDone}/${pendingFiles.length}: ${pf.name}`;render();
     try{
-      if(pf.type==="duve"){
-        const text=pf.text||new TextDecoder().decode(pf.buf);
-        results.duve=parseDuve(text);
-        results.logs.push(`✅ Duve: ${Object.keys(results.duve).length} records`);
-      }else{
-        const wb=XLSX.read(pf.buf,{cellDates:true});
-        if(pf.type==="reservation"){
-          const{prop,res,err,total,active}=parseRes(wb);
-          if(err){results.logs.push(`❌ ${pf.name}: ${err}`);continue}
-          const ids=new Set(results.res.map(r=>r.id));
-          let added=0;
-          for(const r of res){if(!ids.has(r.id)){results.res.push(r);ids.add(r.id);added++}}
-          results.logs.push(`✅ ${prop||"?"}: ${total} rows → ${active} active → ${added} new (${results.res.length} total)`);
-        }else if(pf.type==="availability"){
-          const{prop,data}=parseAvail(wb);
-          results.avail[prop]=data;
-          results.logs.push(`✅ Avail ${prop}: ${Object.keys(data).length} days`);
-        }
+      const wb=XLSX.read(pf.buf,{cellDates:true});
+      if(pf.type==="reservation"){
+        const{prop,res,err,total,active}=parseRes(wb);
+        if(err){results.logs.push(`❌ ${pf.name}: ${err}`);continue}
+        const ids=new Set(results.res.map(r=>r.id));
+        let added=0;
+        for(const r of res){if(!ids.has(r.id)){results.res.push(r);ids.add(r.id);added++}}
+        results.logs.push(`✅ ${prop||"?"}: ${total} rows → ${active} active → ${added} new (${results.res.length} total)`);
+      }else if(pf.type==="availability"){
+        const{prop,data}=parseAvail(wb);
+        results.avail[prop]=data;
+        results.logs.push(`✅ Avail ${prop}: ${Object.keys(data).length} days`);
       }
     }catch(e){
       results.logs.push(`❌ ${pf.name}: ${e.message}`);
@@ -1020,7 +995,7 @@ async function processFiles(){
   // Score all reservations
   st.umsg="A calcular riscos...";render();
   const scored=results.res.map(r=>{
-    const{score,level,override,prob}=computeRisk(r,results.duve);
+    const{score,level,override,prob}=computeRisk(r);
     const factors=[];
     if(r.previousCancels>0)factors.push("PrevCancel:"+r.previousCancels);
     if(r.previousStays>0)factors.push("Repeat:"+r.previousStays+"x");
@@ -1113,7 +1088,7 @@ async function processFiles(){
     obMap[key]={ob:o.ob,rooms:o.rooms,rate:o.avgRate,hiRooms:hiRoomIds,hiGuests:hiOnDay.slice(0,3).map(r=>r.guest.split(" ").pop())};
   });
 
-  D={reservations:scored,availability:results.avail,overbooking:ob,obMap,duve:results.duve,log:results.logs,generated:new Date().toISOString()};
+  D={reservations:scored,availability:results.avail,overbooking:ob,obMap,log:results.logs,generated:new Date().toISOString()};
   st.phase="dashboard";st.uping=false;st.umsg="";pendingFiles=[];
   render();
   addLog(`Dashboard loaded: ${scored.length} reservations, ${ob.length} OB days`);
@@ -1124,10 +1099,268 @@ async function addFiles(type,e){
   for(const f of files){
     try{
       const buf=await f.arrayBuffer();
-      pendingFiles.push({buf,name:f.name,type,text:type==="duve"?new TextDecoder().decode(buf):null});
+      pendingFiles.push({buf,name:f.name,type});
     }catch(err){console.error("Read error:",f.name,err)}
   }
   render();
+}
+
+// ─── MEWS ACTIONS: Notes, Tasks, Bulk Actions ───
+
+// Add a warning note to a HIGH-risk reservation in Mews
+async function addShieldNote(resvId, guestName, score, prob, level, factors){
+  try{
+    const text=`⚠️ CANCELLATION SHIELD — Risco ${level} (${prob}%)\nScore: ${score}/100 | Factores: ${factors.join(", ")}\nGerado automaticamente em ${new Date().toLocaleString("pt")}`;
+    await callMewsProxy("serviceOrderNotes/add",{ServiceOrderNotes:[{ServiceOrderId:resvId,Text:text,Type:"General"}]});
+    addLog(`📝 Nota adicionada: ${guestName} (${level})`);
+    return true;
+  }catch(e){addLog(`❌ Nota falhou: ${e.message}`);return false}
+}
+
+// Create a retention task in Mews for the front-desk team
+async function addShieldTask(resvId, guestName, score, prob, arrival, offer){
+  try{
+    const deadline=new Date(arrival+"T10:00:00Z");
+    if(deadline<new Date())deadline.setTime(Date.now()+86400000); // if past, set to tomorrow
+    const name=`🛡️ Shield: Contactar ${guestName} (${prob}% risco)`;
+    const desc=`Cancellation Shield detectou risco ${prob}% de cancelamento.\n\nScore: ${score}\nChegada: ${arrival}\nSugestão: ${offer}\n\nReserva ID: ${resvId}`;
+    await callMewsProxy("tasks/add",{Tasks:[{Name:name.slice(0,100),Description:desc,DeadlineUtc:deadline.toISOString(),ServiceOrderId:resvId}]});
+    addLog(`✅ Task criada: ${guestName}`);
+    return true;
+  }catch(e){addLog(`❌ Task falhou: ${e.message}`);return false}
+}
+
+// Bulk: add notes to ALL HIGH-risk reservations
+async function bulkAddNotes(){
+  if(!confirm("Adicionar nota de alerta em TODAS as "+D.reservations.filter(r=>r.level==="HIGH").length+" reservas HIGH risk?"))return;
+  st.uping=true;st.umsg="Adicionando notas...";render();
+  const hi=D.reservations.filter(r=>r.level==="HIGH");
+  let ok=0,fail=0;
+  for(const r of hi){
+    const success=await addShieldNote(r.id,r.guest,r.score,r.prob,r.level,r.factors||[]);
+    if(success)ok++;else fail++;
+    st.umsg=`Notas: ${ok+fail}/${hi.length}...`;render();
+  }
+  st.uping=false;st.umsg=`✅ ${ok} notas adicionadas${fail?", "+fail+" falharam":""}`;render();
+}
+
+// Bulk: create tasks for all HIGH-risk reservations arriving in next 14 days
+async function bulkAddTasks(){
+  const hi=D.reservations.filter(r=>r.level==="HIGH"&&r.daysUntil>0&&r.daysUntil<=14);
+  if(!confirm("Criar task para "+hi.length+" reservas HIGH risk nos próximos 14 dias?"))return;
+  st.uping=true;st.umsg="Criando tasks...";render();
+  let ok=0,fail=0;
+  for(const r of hi){
+    const success=await addShieldTask(r.id,r.guest,r.score,r.prob,r.arrival,r.offer||"Oferecer upgrade");
+    if(success)ok++;else fail++;
+    st.umsg=`Tasks: ${ok+fail}/${hi.length}...`;render();
+  }
+  st.uping=false;st.umsg=`✅ ${ok} tasks criadas${fail?", "+fail+" falharam":""}`;render();
+}
+
+// ─── EMAIL ALERT: Generate and send alert summary ───
+
+function generateAlertEmail(){
+  const hi=D.reservations.filter(r=>r.level==="HIGH"&&r.daysUntil>0&&r.daysUntil<=14);
+  const med=D.reservations.filter(r=>r.level==="MEDIUM"&&r.daysUntil>0&&r.daysUntil<=7);
+  if(hi.length===0&&med.length===0){alert("Nenhuma reserva de alto risco nos próximos 14 dias.");return}
+  const dt=new Date().toLocaleDateString("pt");
+  const totalRiskRev=hi.reduce((s,r)=>s+(r.riskRev||0),0);
+  let body=`CANCELLATION SHIELD — Alerta Diário (${dt})\n\n`;
+  body+=`${hi.length} reservas HIGH risk (próximos 14 dias)\n`;
+  body+=`${med.length} reservas MEDIUM risk (próximos 7 dias)\n`;
+  body+=`€${totalRiskRev.toLocaleString("pt")} receita em risco\n\n`;
+  body+=`═══════════════════════════════\n`;
+  body+=`RESERVAS HIGH RISK:\n`;
+  body+=`═══════════════════════════════\n\n`;
+  hi.sort((a,b)=>a.daysUntil-b.daysUntil).forEach((r,i)=>{
+    body+=`${i+1}. ${r.guest} — ${r.prop}\n`;
+    body+=`   Chegada: ${fmt(r.arrival)} (${r.daysUntil} dias) | ${r.nights} noites\n`;
+    body+=`   Score: ${r.score}/100 | Prob: ${r.prob}% | €${r.total}\n`;
+    body+=`   Canal: ${r.source} | Rate: ${r.rate}\n`;
+    body+=`   Fatores: ${(r.factors||[]).join(", ")}\n`;
+    body+=`   Ação: ${r.offer||"Contactar hóspede"}\n\n`;
+  });
+  if(med.length>0){
+    body+=`═══════════════════════════════\n`;
+    body+=`RESERVAS MEDIUM RISK:\n`;
+    body+=`═══════════════════════════════\n\n`;
+    med.sort((a,b)=>a.daysUntil-b.daysUntil).forEach((r,i)=>{
+      body+=`${i+1}. ${r.guest} — ${r.prop}\n`;
+      body+=`   Chegada: ${fmt(r.arrival)} (${r.daysUntil}d) | Score: ${r.score} | Prob: ${r.prob}%\n`;
+      body+=`   Canal: ${r.source} | €${r.total}\n\n`;
+    });
+  }
+  body+=`\n— Gerado pelo Cancellation Shield v10.1`;
+  const subject=`🛡️ Shield Alert: ${hi.length} HIGH risk | €${totalRiskRev.toLocaleString("pt")} em risco (${dt})`;
+  window.open("mailto:?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body));
+  addLog(`📧 Email alert gerado com ${hi.length} HIGH + ${med.length} MEDIUM reservas`);
+}
+
+// ─── WEEKLY REPORT: Generate summary report ───
+
+function generateWeeklyReport(){
+  if(!D.reservations.length){alert("Carregue dados primeiro.");return}
+  const hi=D.reservations.filter(r=>r.level==="HIGH");
+  const med=D.reservations.filter(r=>r.level==="MEDIUM");
+  const lo=D.reservations.filter(r=>r.level==="LOW");
+  const totalRev=D.reservations.reduce((s,r)=>s+r.total,0);
+  const riskRev=D.reservations.reduce((s,r)=>s+(r.riskRev||0),0);
+  const obDays=D.overbooking.length;
+  const obRev=D.overbooking.reduce((s,o)=>s+(o.rev||0),0);
+  const dt=new Date().toLocaleDateString("pt");
+  const arriving7=D.reservations.filter(r=>r.daysUntil>0&&r.daysUntil<=7);
+  const hiNext7=arriving7.filter(r=>r.level==="HIGH");
+  const byProp={};D.reservations.forEach(r=>{if(!byProp[r.prop])byProp[r.prop]={total:0,high:0,rev:0,risk:0};byProp[r.prop].total++;if(r.level==="HIGH")byProp[r.prop].high++;byProp[r.prop].rev+=r.total;byProp[r.prop].risk+=(r.riskRev||0)});
+
+  // Build HTML report for print
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Shield Weekly Report - ${dt}</title>
+<style>body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:30px;color:#1a1a2e}
+h1{color:#1a1a2e;border-bottom:3px solid #ef4444;padding-bottom:10px}
+h2{color:#4a5280;margin-top:30px;border-bottom:1px solid #ddd;padding-bottom:6px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}
+.kpi-card{background:#f5f7fa;border-radius:8px;padding:16px;text-align:center}
+.kpi-card .num{font-size:28px;font-weight:900;color:#1a1a2e}.kpi-card .lbl{font-size:11px;color:#666;margin-top:4px}
+.risk-high{border-left:4px solid #ef4444}.risk-med{border-left:4px solid #f59e0b}.risk-low{border-left:4px solid #22c55e}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px}
+th{background:#1a1a2e;color:white;padding:8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #eee}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.badge.h{background:#ef444420;color:#ef4444}.badge.m{background:#f59e0b20;color:#c78000}.badge.l{background:#22c55e20;color:#16a34a}
+.footer{margin-top:40px;text-align:center;color:#999;font-size:10px;border-top:1px solid #eee;padding-top:12px}
+@media print{body{padding:10px}.kpi-grid{grid-template-columns:repeat(4,1fr)}}
+</style></head><body>
+<h1>🛡️ Cancellation Shield — Relatório Semanal</h1>
+<p style="color:#666">Gerado em ${new Date().toLocaleString("pt")} | Dados: ${D.reservations.length} reservas ativas</p>
+
+<div class="kpi-grid">
+<div class="kpi-card risk-high"><div class="num">${hi.length}</div><div class="lbl">HIGH RISK</div></div>
+<div class="kpi-card risk-med"><div class="num">${med.length}</div><div class="lbl">MEDIUM RISK</div></div>
+<div class="kpi-card risk-low"><div class="num">${lo.length}</div><div class="lbl">LOW RISK</div></div>
+<div class="kpi-card"><div class="num">€${Math.round(riskRev/1000)}K</div><div class="lbl">RECEITA EM RISCO</div></div>
+</div>
+
+<h2>Visão por Propriedade</h2>
+<table><tr><th>Propriedade</th><th>Reservas</th><th>HIGH Risk</th><th>Receita Total</th><th>Receita em Risco</th></tr>
+${Object.entries(byProp).map(([p,d])=>`<tr><td><strong>${p}</strong></td><td>${d.total}</td><td><span class="badge h">${d.high}</span></td><td>€${d.rev.toLocaleString("pt")}</td><td>€${d.risk.toLocaleString("pt")}</td></tr>`).join("")}
+</table>
+
+<h2>Alertas Urgentes (próximos 7 dias)</h2>
+${hiNext7.length===0?'<p style="color:#22c55e">✅ Nenhuma reserva HIGH risk nos próximos 7 dias.</p>':
+`<table><tr><th>Hóspede</th><th>Prop</th><th>Chegada</th><th>Noites</th><th>Score</th><th>Prob</th><th>Total</th><th>Canal</th></tr>
+${hiNext7.sort((a,b)=>a.daysUntil-b.daysUntil).map(r=>`<tr><td>${r.guest}</td><td>${r.prop}</td><td>${fmt(r.arrival)} (${r.daysUntil}d)</td><td>${r.nights}</td><td>${r.score}</td><td><span class="badge h">${r.prob}%</span></td><td>€${r.total}</td><td>${r.source}</td></tr>`).join("")}
+</table>`}
+
+<h2>Top 10 Reservas Mais Arriscadas</h2>
+<table><tr><th>#</th><th>Hóspede</th><th>Prop</th><th>Chegada</th><th>Score</th><th>Prob</th><th>€ Risco</th><th>Factores</th></tr>
+${hi.sort((a,b)=>(b.riskRev||0)-(a.riskRev||0)).slice(0,10).map((r,i)=>`<tr><td>${i+1}</td><td>${r.guest}</td><td>${r.prop}</td><td>${fmt(r.arrival)}</td><td>${r.score}</td><td>${r.prob}%</td><td>€${r.riskRev||0}</td><td style="font-size:10px">${(r.factors||[]).slice(0,3).join(", ")}</td></tr>`).join("")}
+</table>
+
+<h2>Overbooking</h2>
+<p>${obDays} dias com sugestão de overbooking | Receita potencial: €${Math.round(obRev/1000)}K</p>
+
+<div class="footer">Cancellation Shield v10.1 — Gerado automaticamente<br>Para aceder ao dashboard completo: cancellation-shield.vercel.app</div>
+</body></html>`);
+  w.document.close();
+  // Auto-trigger print dialog for PDF save
+  setTimeout(()=>w.print(),500);
+  addLog(`📊 Relatório semanal gerado (${hi.length} HIGH, ${med.length} MED)`);
+}
+
+// ─── BACKTEST: Accuracy tracking from historical data ───
+
+async function runBacktest(){
+  st.uping=true;st.umsg="(1/3) Carregando reservas históricas...";render();
+  try{
+    // Fetch ALL canceled reservations (to see what actually canceled)
+    const canceledRes=await fetchAllPages("reservations/getAll/2023-06-06",{
+      States:["Canceled"],
+      TimeFilter:"Start",
+      StartUtc:new Date(Date.now()-365*864e5).toISOString(),
+      EndUtc:new Date().toISOString(),
+      Limitation:{Count:200},
+      Extent:{Reservations:true}
+    },"Reservations");
+
+    st.umsg="(2/3) Carregando reservas processadas...";render();
+
+    // Fetch ALL processed reservations (completed stays)
+    const processedRes=await fetchAllPages("reservations/getAll/2023-06-06",{
+      States:["Processed"],
+      TimeFilter:"Start",
+      StartUtc:new Date(Date.now()-365*864e5).toISOString(),
+      EndUtc:new Date().toISOString(),
+      Limitation:{Count:200},
+      Extent:{Reservations:true}
+    },"Reservations");
+
+    st.umsg="(3/3) Analisando accuracy...";render();
+
+    // Fetch reference data needed for scoring
+    const ratesRes=await fetchAllPages("rates/getAll",{Limitation:{Count:1000}},"Rates");
+    const ratesMap={};ratesRes.forEach(r=>{ratesMap[r.Id]=r.Name||""});
+    const sourcesRes=await fetchAllPages("sources/getAll",{Limitation:{Count:1000}},"Sources");
+    const sourcesMap={};sourcesRes.forEach(s=>{sourcesMap[s.Id]=s.Name||""});
+    const resourcesRes=await callMewsProxy("resources/getAll",{Extent:{Resources:true,ResourceCategories:true}});
+    const resourcesMap={};const categoriesMap={};
+    (resourcesRes.Resources||[]).forEach(r=>{resourcesMap[r.Id]=r});
+    (resourcesRes.ResourceCategories||[]).forEach(c=>{categoriesMap[c.Id]=c});
+    const config=await callMewsProxy("configuration/get",{});
+    const enterpriseName=config.Enterprise?.Name||"";
+
+    // Combine all historical reservations and score them
+    const allHist=[
+      ...canceledRes.map(r=>({...r,_outcome:"canceled"})),
+      ...processedRes.map(r=>({...r,_outcome:"stayed"}))
+    ];
+
+    // Map to our format (simplified, no payments/history for speed)
+    const mapped=allHist.map(r=>{
+      const m=mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,{},{},enterpriseName,{},{},{});
+      const{score,level,prob}=computeRisk(m,{});
+      return{outcome:r._outcome,score,level,prob,arrival:m.arrival,total:m.total,source:m.source,rate:m.rate,leadTimeDays:m.leadTimeDays};
+    });
+
+    // Calculate accuracy by risk level
+    const stats={HIGH:{total:0,canceled:0},MEDIUM:{total:0,canceled:0},LOW:{total:0,canceled:0}};
+    const byMonth={};
+    const byLT={"0-1":{t:0,c:0},"2-7":{t:0,c:0},"8-14":{t:0,c:0},"15-30":{t:0,c:0},"31-60":{t:0,c:0},"61+":{t:0,c:0}};
+    const byChan={};
+    const byScore=[];
+    for(let i=0;i<=100;i+=5)byScore.push({min:i,max:i+5,t:0,c:0});
+
+    mapped.forEach(r=>{
+      const isCanceled=r.outcome==="canceled";
+      stats[r.level].total++;
+      if(isCanceled)stats[r.level].canceled++;
+
+      // By month
+      const mo=r.arrival?r.arrival.slice(0,7):"?";
+      if(!byMonth[mo])byMonth[mo]={t:0,c:0};
+      byMonth[mo].t++;
+      if(isCanceled)byMonth[mo].c++;
+
+      // By lead time bucket
+      const lt=r.leadTimeDays||0;
+      const ltKey=lt<=1?"0-1":lt<=7?"2-7":lt<=14?"8-14":lt<=30?"15-30":lt<=60?"31-60":"61+";
+      byLT[ltKey].t++;if(isCanceled)byLT[ltKey].c++;
+
+      // By channel
+      const ch=r.source||"Unknown";
+      if(!byChan[ch])byChan[ch]={t:0,c:0};
+      byChan[ch].t++;if(isCanceled)byChan[ch].c++;
+
+      // By score bucket
+      const idx=Math.min(Math.floor(r.score/5),19);
+      byScore[idx].t++;if(isCanceled)byScore[idx].c++;
+    });
+
+    D.backtest={stats,byMonth,byLT,byChan,byScore,totalCanceled:canceledRes.length,totalProcessed:processedRes.length,total:allHist.length,generated:new Date().toISOString()};
+    st.uping=false;st.umsg=`✅ Backtest: ${allHist.length} reservas analisadas (${canceledRes.length} canceladas, ${processedRes.length} processadas)`;
+    st.tab="accuracy";render();
+  }catch(e){
+    st.uping=false;st.umsg="❌ Backtest falhou: "+e.message;render();
+  }
 }
 
 // ─── HELPERS ───
@@ -1149,9 +1382,14 @@ function render(){
   const cW=st.viewDays<=14?56:st.viewDays<=30?38:st.viewDays<=60?22:14,rH=26,lW=110;
   let h="";
   // Header
-  h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v10 — THE HAUS GROUP — ${(D.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
+  h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v10.1 — UNIVERSAL — ${(D.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
   [" ALL",...PS].forEach(p=>{h+=`<button class="btn${st.prop===p?" on":""}" onclick="sp('${p}')">${p}</button>`});
   h+=`<button class="btn api" onclick="fetchFromMews()" ${st.uping?'disabled':''} title="Carregar dados ao vivo da Mews">🔄 Mews</button>`;
+  h+=`<button class="btn" style="border-color:#ef444430;color:#ef4444" onclick="bulkAddNotes()" ${st.uping?'disabled':''} title="Adicionar notas em todas reservas HIGH">📝 Notas</button>`;
+  h+=`<button class="btn" style="border-color:#f59e0b30;color:#f59e0b" onclick="bulkAddTasks()" ${st.uping?'disabled':''} title="Criar tasks para reservas HIGH (14d)">📋 Tasks</button>`;
+  h+=`<button class="btn" style="border-color:#60a5fa30;color:#60a5fa" onclick="runBacktest()" ${st.uping?'disabled':''} title="Backtest: accuracy do modelo com dados históricos">📊 Backtest</button>`;
+  h+=`<button class="btn" style="border-color:#22c55e30;color:#22c55e" onclick="generateAlertEmail()" title="Gerar email de alerta com reservas de risco">📧 Email</button>`;
+  h+=`<button class="btn" style="border-color:#a78bfa30;color:#a78bfa" onclick="generateWeeklyReport()" title="Gerar relatório semanal PDF">📄 Relatório</button>`;
   h+=`<button class="btn warn" onclick="st.phase='upload';render()">↑ Upload</button></div></div>`;
   const bp={};PS.forEach(p=>{bp[p]=D.reservations.filter(r=>r.prop===p).length});
   h+=`<div class="status"><div class="dot" style="background:#22c55e"></div>${D.reservations.length} reservas — ${bp.Alegria||0} ALE / ${bp["SB I"]||0} SBI / ${bp["SB II"]||0} SBII — modelo com 22 sinais calibrados com dados reais</div>`;
@@ -1168,7 +1406,7 @@ function render(){
   h+=`</div>`;
   // Tabs + Nav
   h+=`<div class="tabs">`;
-  [{id:"timeline",l:"▦ Timeline"},{id:"retention",l:"☎ Retenção"},{id:"overbooking",l:"⊕ Overbooking"}].forEach(t=>{h+=`<button class="tab${st.tab===t.id?" on":""}" onclick="stab('${t.id}')">${t.l}</button>`});
+  [{id:"timeline",l:"▦ Timeline"},{id:"retention",l:"☎ Retenção"},{id:"overbooking",l:"⊕ Overbooking"},{id:"accuracy",l:"📊 Accuracy"},{id:"periods",l:"📅 Períodos"}].forEach(t=>{h+=`<button class="tab${st.tab===t.id?" on":""}" onclick="stab('${t.id}')">${t.l}</button>`});
   h+=`<div class="nav"><button class="nbtn" onclick="np()">◀</button><button class="nbtn on" onclick="nt()">HOJE</button><button class="nbtn" onclick="nn()">▶</button>`;
   [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${st.viewDays===d?" on":""}" onclick="sd(${d})">${d}d</button>`});
   h+=`</div></div><div class="content"><div class="main">`;
@@ -1224,6 +1462,115 @@ function render(){
       h+=`</table>`;
       h+=`<div style="padding:10px;font-size:10px;color:#4a5280;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1e2545;margin-top:8px"><span>${ob.length} dias com oportunidade · ${ob.reduce((s,o)=>s+o.ob,0)} noites extra</span><span style="color:#22c55e;font-weight:800;font-size:12px">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()} receita potencial</span></div>`}
     h+=`</div>`}
+  // ACCURACY TAB
+  if(st.tab==="accuracy"){
+    h+=`<div class="tbl">`;
+    if(!D.backtest){
+      h+=`<div style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">📊</div><div style="font-size:14px;font-weight:800;color:#f0f4ff;margin-bottom:8px">Accuracy do Modelo</div><div style="font-size:10px;color:#4a5280;margin-bottom:16px;line-height:1.5">Analisa todas as reservas históricas (canceladas + processadas) e compara<br>com o que o algoritmo teria previsto. Clica no botão acima para começar.</div><button onclick="runBacktest()" style="padding:10px 24px;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer" ${st.uping?'disabled':''}>📊 Executar Backtest</button></div>`
+    }else{
+      const bt=D.backtest;
+      // Summary cards
+      h+=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">`;
+      h+=`<div style="background:#12162a;border:1px solid #1e2545;border-radius:8px;padding:12px;text-align:center"><div style="font-size:8px;color:#4a5280;font-weight:700;letter-spacing:1px">TOTAL ANALISADO</div><div style="font-size:22px;font-weight:900;color:#f0f4ff">${bt.total}</div><div style="font-size:9px;color:#4a5280">${bt.totalCanceled} canceladas · ${bt.totalProcessed} processadas</div></div>`;
+      const hiAcc=bt.stats.HIGH.total>0?Math.round(bt.stats.HIGH.canceled/bt.stats.HIGH.total*100):0;
+      const meAcc=bt.stats.MEDIUM.total>0?Math.round(bt.stats.MEDIUM.canceled/bt.stats.MEDIUM.total*100):0;
+      const loAcc=bt.stats.LOW.total>0?Math.round(bt.stats.LOW.canceled/bt.stats.LOW.total*100):0;
+      h+=`<div style="background:#ef444418;border:1px solid #ef444430;border-radius:8px;padding:12px;text-align:center"><div style="font-size:8px;color:#ef9090;font-weight:700;letter-spacing:1px">HIGH ACCURACY</div><div style="font-size:22px;font-weight:900;color:#ef4444">${hiAcc}%</div><div style="font-size:9px;color:#4a5280">${bt.stats.HIGH.canceled}/${bt.stats.HIGH.total} cancelaram</div></div>`;
+      h+=`<div style="background:#f59e0b18;border:1px solid #f59e0b30;border-radius:8px;padding:12px;text-align:center"><div style="font-size:8px;color:#f5c890;font-weight:700;letter-spacing:1px">MEDIUM ACCURACY</div><div style="font-size:22px;font-weight:900;color:#f59e0b">${meAcc}%</div><div style="font-size:9px;color:#4a5280">${bt.stats.MEDIUM.canceled}/${bt.stats.MEDIUM.total} cancelaram</div></div>`;
+      h+=`<div style="background:#22c55e18;border:1px solid #22c55e30;border-radius:8px;padding:12px;text-align:center"><div style="font-size:8px;color:#4ade80;font-weight:700;letter-spacing:1px">LOW ACCURACY</div><div style="font-size:22px;font-weight:900;color:#22c55e">${loAcc}%</div><div style="font-size:9px;color:#4a5280">${bt.stats.LOW.canceled}/${bt.stats.LOW.total} cancelaram</div></div>`;
+      h+=`</div>`;
+      // Explanation
+      h+=`<div style="background:#1e3a8a20;border:1px solid #1e3a8a40;border-radius:6px;padding:10px 14px;margin-bottom:14px"><div style="font-size:9px;color:#6a7aaa;line-height:1.5">O modelo é bom quando: <b style="color:#ef4444">HIGH</b> tem taxa alta de cancelamento, <b style="color:#22c55e">LOW</b> tem taxa baixa. O ideal é HIGH &gt; 60% e LOW &lt; 20%.</div></div>`;
+      // Score calibration chart (text-based)
+      h+=`<div style="font-size:10px;font-weight:800;color:#f0f4ff;margin-bottom:8px">Calibração por Score</div>`;
+      h+=`<table><tr><th>SCORE</th><th>RESERVAS</th><th>CANCELARAM</th><th>TAXA REAL</th><th>PREVISTO</th><th>DIFF</th><th style="width:200px">DISTRIBUIÇÃO</th></tr>`;
+      bt.byScore.forEach(b=>{
+        if(b.t===0)return;
+        const real=Math.round(b.c/b.t*100);
+        const pred=cancelProb(b.min+2);
+        const diff=real-pred;
+        const diffColor=Math.abs(diff)<=10?"#22c55e":Math.abs(diff)<=20?"#f59e0b":"#ef4444";
+        const barW=Math.max(2,Math.round(b.t/Math.max(...bt.byScore.map(x=>x.t))*150));
+        const cancelW=Math.round(barW*b.c/b.t);
+        h+=`<tr><td style="font-weight:700;color:#93b4ff">${b.min}-${b.max}</td><td>${b.t}</td><td style="color:#ef4444">${b.c}</td><td style="font-weight:800;color:${real>=50?"#ef4444":"#22c55e"}">${real}%</td><td style="color:#6a7aaa">${pred}%</td><td style="color:${diffColor};font-weight:700">${diff>0?"+":""}${diff}%</td><td><div style="display:flex;align-items:center;gap:4px"><div style="width:${barW}px;height:10px;background:#1e2545;border-radius:2px;overflow:hidden"><div style="width:${cancelW}px;height:100%;background:#ef4444"></div></div><span style="font-size:8px;color:#4a5280">${b.c}/${b.t}</span></div></td></tr>`;
+      });
+      h+=`</table>`;
+      // By Lead Time
+      h+=`<div style="font-size:10px;font-weight:800;color:#f0f4ff;margin:16px 0 8px">Taxa de Cancelamento por Lead Time</div>`;
+      h+=`<table><tr><th>LEAD TIME</th><th>RESERVAS</th><th>CANCELARAM</th><th>TAXA</th></tr>`;
+      Object.entries(bt.byLT).forEach(([k,v])=>{
+        if(v.t===0)return;
+        const rate=Math.round(v.c/v.t*100);
+        h+=`<tr><td style="font-weight:700;color:#93b4ff">${k} dias</td><td>${v.t}</td><td style="color:#ef4444">${v.c}</td><td style="font-weight:800;color:${rate>=50?"#ef4444":"#22c55e"}">${rate}%</td></tr>`;
+      });
+      h+=`</table>`;
+      // By Channel (top 10)
+      h+=`<div style="font-size:10px;font-weight:800;color:#f0f4ff;margin:16px 0 8px">Taxa de Cancelamento por Canal (top 10)</div>`;
+      h+=`<table><tr><th>CANAL</th><th>RESERVAS</th><th>CANCELARAM</th><th>TAXA</th></tr>`;
+      Object.entries(bt.byChan).sort((a,b)=>b[1].t-a[1].t).slice(0,10).forEach(([k,v])=>{
+        const rate=Math.round(v.c/v.t*100);
+        h+=`<tr><td style="color:#a78bfa;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k}</td><td>${v.t}</td><td style="color:#ef4444">${v.c}</td><td style="font-weight:800;color:${rate>=50?"#ef4444":"#22c55e"}">${rate}%</td></tr>`;
+      });
+      h+=`</table>`;
+      // By Month
+      h+=`<div style="font-size:10px;font-weight:800;color:#f0f4ff;margin:16px 0 8px">Evolução Mensal do Cancelamento</div>`;
+      h+=`<table><tr><th>MÊS</th><th>RESERVAS</th><th>CANCELARAM</th><th>TAXA</th><th style="width:200px">VISUAL</th></tr>`;
+      Object.entries(bt.byMonth).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([k,v])=>{
+        const rate=Math.round(v.c/v.t*100);
+        const barW=Math.max(2,Math.round(v.t/Math.max(...Object.values(bt.byMonth).map(x=>x.t))*150));
+        const cancelW=Math.round(barW*v.c/v.t);
+        h+=`<tr><td style="font-weight:700;color:#93b4ff">${k}</td><td>${v.t}</td><td style="color:#ef4444">${v.c}</td><td style="font-weight:800;color:${rate>=50?"#ef4444":"#22c55e"}">${rate}%</td><td><div style="width:${barW}px;height:10px;background:#1e2545;border-radius:2px;overflow:hidden"><div style="width:${cancelW}px;height:100%;background:#ef4444"></div></div></td></tr>`;
+      });
+      h+=`</table>`;
+      h+=`<div style="padding:10px;font-size:9px;color:#3a4270;margin-top:8px">Backtest gerado: ${bt.generated}</div>`;
+    }
+    h+=`</div>`}
+  // PERIODS TAB
+  if(st.tab==="periods"){
+    h+=`<div class="tbl">`;
+    // Build period comparison from current reservations
+    const byMo={};
+    D.reservations.forEach(r=>{
+      const mo=r.arrival?r.arrival.slice(0,7):"?";
+      if(!byMo[mo])byMo[mo]={total:0,hi:0,me:0,lo:0,rev:0,riskRev:0,nights:0};
+      byMo[mo].total++;
+      if(r.level==="HIGH")byMo[mo].hi++;
+      else if(r.level==="MEDIUM")byMo[mo].me++;
+      else byMo[mo].lo++;
+      byMo[mo].rev+=r.total||0;
+      byMo[mo].riskRev+=r.riskRev||0;
+      byMo[mo].nights+=r.nights||0;
+    });
+    const months=Object.entries(byMo).sort((a,b)=>a[0].localeCompare(b[0]));
+    h+=`<div style="font-size:12px;font-weight:800;color:#f0f4ff;margin-bottom:12px">Comparação por Período — ${months.length} meses</div>`;
+    // Summary cards per month
+    h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">`;
+    months.forEach(([mo,d])=>{
+      const hiPct=d.total>0?Math.round(d.hi/d.total*100):0;
+      h+=`<div style="background:#12162a;border:1px solid #1e2545;border-radius:8px;padding:12px"><div style="font-size:11px;font-weight:800;color:#93b4ff;margin-bottom:6px">${mo}</div>`;
+      h+=`<div style="font-size:9px;color:#4a5280;margin-bottom:4px">${d.total} reservas · ${d.nights} noites</div>`;
+      h+=`<div style="display:flex;gap:8px;margin-bottom:6px"><span style="font-size:10px;font-weight:800;color:#ef4444">${d.hi} HIGH</span><span style="font-size:10px;font-weight:800;color:#f59e0b">${d.me} MED</span><span style="font-size:10px;font-weight:800;color:#22c55e">${d.lo} LOW</span></div>`;
+      // Risk bar
+      h+=`<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:6px">`;
+      if(d.total>0){
+        h+=`<div style="width:${d.hi/d.total*100}%;background:#ef4444"></div>`;
+        h+=`<div style="width:${d.me/d.total*100}%;background:#f59e0b"></div>`;
+        h+=`<div style="width:${d.lo/d.total*100}%;background:#22c55e"></div>`;
+      }
+      h+=`</div>`;
+      h+=`<div style="font-size:9px;color:#4a5280">€${Math.round(d.rev/1000)}K receita · <span style="color:#ef4444">€${Math.round(d.riskRev/1000)}K</span> em risco (${hiPct}%)</div>`;
+      h+=`</div>`;
+    });
+    h+=`</div>`;
+    // Detail table
+    h+=`<table><tr><th>MÊS</th><th>RESERVAS</th><th>NOITES</th><th style="color:#ef4444">HIGH</th><th style="color:#f59e0b">MEDIUM</th><th style="color:#22c55e">LOW</th><th>%HIGH</th><th>RECEITA</th><th>EM RISCO</th><th>ADR MÉDIO</th></tr>`;
+    months.forEach(([mo,d])=>{
+      const hiPct=d.total>0?Math.round(d.hi/d.total*100):0;
+      const adr=d.nights>0?Math.round(d.rev/d.nights):0;
+      h+=`<tr><td style="font-weight:700;color:#93b4ff">${mo}</td><td>${d.total}</td><td>${d.nights}</td><td style="color:#ef4444;font-weight:800">${d.hi}</td><td style="color:#f59e0b;font-weight:800">${d.me}</td><td style="color:#22c55e;font-weight:800">${d.lo}</td><td style="font-weight:800;color:${hiPct>=30?"#ef4444":"#f59e0b"}">${hiPct}%</td><td style="color:#f0f4ff">€${Math.round(d.rev/1000)}K</td><td style="color:#ef4444;font-weight:700">€${Math.round(d.riskRev/1000)}K</td><td style="color:#4a5280">€${adr}</td></tr>`;
+    });
+    h+=`</table>`;
+    h+=`</div>`}
   h+=`</div>`;
   // PANEL
   if(sel){const bg=rc(sel.level);const pc=probColor(sel.prob||0);
@@ -1231,9 +1578,16 @@ function render(){
     h+=`<div class="risk" style="background:${bg}18;border:1px solid ${bg}30"><span class="sc" style="color:${bg}">${sel.score}</span><span class="lv" style="color:${bg}">${sel.level}</span>${sel.override?`<span class="ov">${sel.override}</span>`:""}</div>`;
     h+=`<div style="margin:0 12px 8px;padding:10px 14px;background:#0c0f1a;border-radius:6px;border:1px solid #1e2545"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:9px;color:#4a5280;font-weight:700">PROBABILIDADE DE CANCELAR</span><span style="font-size:18px;font-weight:900;color:${pc}">${sel.prob||0}%</span></div><div style="background:#1e2545;border-radius:3px;height:8px;overflow:hidden"><div style="width:${sel.prob||0}%;height:100%;background:${pc};border-radius:3px;transition:width .3s"></div></div><div style="margin-top:6px;font-size:8px;color:#3a4270">€${sel.riskRev||0} revenue em risco (€${sel.total} × ${sel.prob||0}%)</div></div>`;
     h+=`<div style="padding:0 14px">`;
-    [{l:"Arrival",v:fmt(sel.arrival)+" ("+sel.daysUntil+"d)"},{l:"Departure",v:fmt(sel.departure)},{l:"Noites",v:sel.nights},{l:"Rate",v:sel.rate},{l:"ADR",v:"€"+sel.adr},{l:"Total",v:"€"+sel.total},{l:"Canal",v:sel.source},{l:"Pagamento",v:sel.payment||"—"},{l:"Pagamento API",v:sel.paymentStatus||"—"},{l:"Cartão",v:sel.hasCreditCard?"Sim":"Não"},{l:"Hóspede repetente",v:sel.previousStays>0?sel.previousStays+" estadias anteriores":"Novo"},{l:"Cancelamentos anteriores",v:sel.previousCancels>0?sel.previousCancels+"x":"Nenhum"},{l:"Reserva modificada",v:sel.wasModified?"Sim":"Não"},{l:"Email OTA",v:sel.hasOtaEmail?"Sim":"Não"},{l:"Agência",v:sel.hasTravelAgency?"Sim":"Não"},{l:"Crianças",v:sel.hasChildren?"Sim":"Não"},{l:"Nacionalidade",v:(sel.nationality||"—")+(sel.natTier==="HIGH"?' <span class="nat-tag" style="background:#ef444420;color:#ef9090">HIGH RISK</span>':sel.natTier==="LOW"?' <span class="nat-tag" style="background:#22c55e20;color:#4ade80">LOW</span>':"")},{l:"Email",v:sel.isRelay?'<span style="color:#ef4444;font-weight:700">'+sel.email+'</span> <span class="nat-tag" style="background:#ef444420;color:#ef9090">RELAY</span>':sel.email||"—"},{l:"Tel",v:sel.phone||"—"},{l:"Genius",v:sel.isGenius?"Sim":"Não"},{l:"Parking",v:sel.hasParking?"Sim":"Não"},{l:"Pet",v:sel.hasPet?"Sim":"Não"},{l:"Duve",v:sel.duveCheckinNotes?"Check-in completo":"—"},{l:"Template",v:sel.template},{l:"Contactar via",v:sel.channel},{l:"Oferta",v:sel.offer}].forEach(d=>{h+=`<div class="row"><label>${d.l}</label><span>${d.v}</span></div>`});
+    [{l:"Arrival",v:fmt(sel.arrival)+" ("+sel.daysUntil+"d)"},{l:"Departure",v:fmt(sel.departure)},{l:"Noites",v:sel.nights},{l:"Rate",v:sel.rate},{l:"ADR",v:"€"+sel.adr},{l:"Total",v:"€"+sel.total},{l:"Canal",v:sel.source},{l:"Pagamento",v:sel.payment||"—"},{l:"Pagamento API",v:sel.paymentStatus||"—"},{l:"Cartão",v:sel.hasCreditCard?"Sim":"Não"},{l:"Hóspede repetente",v:sel.previousStays>0?sel.previousStays+" estadias anteriores":"Novo"},{l:"Cancelamentos anteriores",v:sel.previousCancels>0?sel.previousCancels+"x":"Nenhum"},{l:"Reserva modificada",v:sel.wasModified?"Sim":"Não"},{l:"Email OTA",v:sel.hasOtaEmail?"Sim":"Não"},{l:"Agência",v:sel.hasTravelAgency?"Sim":"Não"},{l:"Crianças",v:sel.hasChildren?"Sim":"Não"},{l:"Nacionalidade",v:(sel.nationality||"—")+(sel.natTier==="HIGH"?' <span class="nat-tag" style="background:#ef444420;color:#ef9090">HIGH RISK</span>':sel.natTier==="LOW"?' <span class="nat-tag" style="background:#22c55e20;color:#4ade80">LOW</span>':"")},{l:"Email",v:sel.isRelay?'<span style="color:#ef4444;font-weight:700">'+sel.email+'</span> <span class="nat-tag" style="background:#ef444420;color:#ef9090">RELAY</span>':sel.email||"—"},{l:"Tel",v:sel.phone||"—"},{l:"Genius",v:sel.isGenius?"Sim":"Não"},{l:"Parking",v:sel.hasParking?"Sim":"Não"},{l:"Pet",v:sel.hasPet?"Sim":"Não"},{l:"Guest Check-in",v:sel.guestCheckedIn?"Check-in online completo":"—"},{l:"Template",v:sel.template},{l:"Contactar via",v:sel.channel},{l:"Oferta",v:sel.offer}].forEach(d=>{h+=`<div class="row"><label>${d.l}</label><span>${d.v}</span></div>`});
     h+=`</div>`;
     if(sel.factors&&sel.factors.length){h+=`<div style="padding:10px 14px"><div style="font-size:8px;font-weight:800;color:#3a4270;letter-spacing:1.5px;margin-bottom:6px">FACTORES DE RISCO</div>`;sel.factors.forEach(f=>{h+=`<span class="ftag">${f}</span>`});h+=`</div>`}
+    // Action buttons
+    if(sel.level==="HIGH"||sel.level==="MEDIUM"){
+      h+=`<div style="padding:10px 14px;border-top:1px solid #1e2545;margin-top:8px"><div style="font-size:8px;font-weight:800;color:#3a4270;letter-spacing:1.5px;margin-bottom:8px">AÇÕES NA MEWS</div>`;
+      h+=`<button onclick="addShieldNote('${sel.id}','${sel.guest.replace(/'/g,"\\'")}',${sel.score},${sel.prob},'${sel.level}',${JSON.stringify(sel.factors||[]).replace(/"/g,'&quot;')})" style="width:100%;padding:8px;margin-bottom:6px;background:#ef444418;border:1px solid #ef444430;border-radius:6px;color:#ef9090;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer">📝 Adicionar nota na reserva</button>`;
+      h+=`<button onclick="addShieldTask('${sel.id}','${sel.guest.replace(/'/g,"\\'")}',${sel.score},${sel.prob},'${sel.arrival}','${(sel.offer||"").replace(/'/g,"\\'")}')" style="width:100%;padding:8px;margin-bottom:6px;background:#f59e0b18;border:1px solid #f59e0b30;border-radius:6px;color:#f5c890;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer">📋 Criar task para a equipe</button>`;
+      h+=`<button onclick="window.open('mailto:?subject='+encodeURIComponent('🛡️ Shield: ${sel.guest.replace(/'/g,"\\'")} (${sel.level} ${sel.prob}%)')+'&body='+encodeURIComponent('Cancellation Shield Alert\\n\\nHóspede: ${sel.guest.replace(/'/g,"\\'")}\\nPropriedade: ${sel.prop}\\nChegada: ${sel.arrival} (${sel.daysUntil}d)\\nNoites: ${sel.nights}\\nScore: ${sel.score}/100 | Prob: ${sel.prob}%\\nTotal: €${sel.total}\\nCanal: ${sel.source}\\nRate: ${sel.rate}\\nAção sugerida: ${(sel.offer||"Contactar hóspede").replace(/'/g,"\\'")}\\nFatores: ${(sel.factors||[]).join(", ")}'))" style="width:100%;padding:8px;margin-bottom:6px;background:#22c55e18;border:1px solid #22c55e30;border-radius:6px;color:#4ade80;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer">📧 Enviar alerta por email</button>`;
+      h+=`</div>`}
     h+=`</div>`}
   h+=`</div>`;app.innerHTML=h;
 }
@@ -1241,19 +1595,17 @@ function render(){
 function rupload(){
   const rC=pendingFiles.filter(f=>f.type==="reservation").length;
   const aC=pendingFiles.filter(f=>f.type==="availability").length;
-  const dC=pendingFiles.filter(f=>f.type==="duve").length;
-  let h=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v10 — ADVANCED MODEL — THE HAUS GROUP</small></div></div></div>`;
-  h+=`<div class="up-zone"><div style="font-size:48px;margin-bottom:12px">🛡️</div><div style="font-size:18px;font-weight:800;color:#f0f4ff;margin-bottom:4px">Cancellation Shield v10</div><div style="font-size:11px;color:#4a5280;margin-bottom:24px">22 sinais · pagamentos em tempo real · histórico de hóspedes · probabilidade suavizada</div>`;
+  let h=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v10.1 — ADVANCED MODEL — UNIVERSAL</small></div></div></div>`;
+  h+=`<div class="up-zone"><div style="font-size:48px;margin-bottom:12px">🛡️</div><div style="font-size:18px;font-weight:800;color:#f0f4ff;margin-bottom:4px">Cancellation Shield v10.1</div><div style="font-size:11px;color:#4a5280;margin-bottom:24px">22 sinais · pagamentos em tempo real · histórico de hóspedes · ações diretas na Mews</div>`;
 
   // API Section
   h+=`<div class="api-section"><h3>🔗 Carregar da Mews API</h3><div class="msg">Conecta à Mews API para carregar dados ao vivo. Serão carregadas reservas, disponibilidade e informações de clientes.</div><button class="api-btn" onclick="fetchFromMews()" ${st.uping?'disabled':''}>${st.uping?'⏳ '+st.umsg:'🚀 Carregar dados ao vivo'}</button>${st.umsg&&st.uping?`<div class="api-status">${st.umsg}</div>`:''}${st.umsg&&!st.uping?`<div class="msg ${st.umsg.includes("❌")?"err":"ok"}">${st.umsg}</div>`:''}</div>`;
 
   h+=`<div style="text-align:center;margin:20px 0;color:#3a4270;font-size:10px;font-weight:700;letter-spacing:2px">OU</div>`;
 
-  h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">`;
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">`;
   h+=`<label class="up-box${rC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${rC?"✅":"📋"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Reservation Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${rC?rC+" ficheiro(s)":"Mews .xlsx (vários)"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('reservation',event)" style="display:none"></label>`;
   h+=`<label class="up-box${aC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${aC?"✅":"📊"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Availability Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${aC?aC+" ficheiro(s)":"Mews .xlsx (1/prop)"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('availability',event)" style="display:none"></label>`;
-  h+=`<label class="up-box${dC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${dC?"✅":"👤"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Duve Export</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${dC?"1 ficheiro":"CSV (opcional)"}</div><input type="file" accept=".csv" onchange="addFiles('duve',event)" style="display:none"></label>`;
   h+=`</div>`;
   const btnText=st.uping?"⏳ "+st.umsg:("🚀 Processar ("+pendingFiles.length+" ficheiros)");
   h+=`<button class="up-btn" onclick="processFiles()" ${rC&&!st.uping?"":"disabled"}>${btnText}</button>`;
