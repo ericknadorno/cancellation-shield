@@ -302,7 +302,7 @@ function normPayment(mewsState){
   return mewsState;
 }
 
-function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName){
+function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName,itemsMap){
   // Determine property from enterprise name (fallback to "Alegria" for demo/unknown)
   let prop="";
   if(enterpriseName.includes("Alegria"))prop="Alegria";
@@ -346,8 +346,9 @@ function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,c
   const companions=companionsMap[res.Id]||[];
   const personCount=apiPersonCount>0?apiPersonCount:(1+companions.length);
 
-  // ADR calculation
-  const totalAmount=res.TotalAmount?(res.TotalAmount.Value||0):0;
+  // ADR calculation — use orderItems total, fallback to TotalAmount
+  const itemsTotal=itemsMap?Math.round(itemsMap[res.Id]||0):0;
+  const totalAmount=itemsTotal>0?itemsTotal:(res.TotalAmount?(res.TotalAmount.Value||0):0);
   const adr=nights>0?Math.round(totalAmount/nights):0;
 
   // Notes from res.Notes
@@ -361,6 +362,7 @@ function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,c
     prop:prop,
     room:room,
     roomType:category.Name||"",
+    status:res.State||"",
     arrival:arr?arr.toISOString().split("T")[0]:"",
     departure:dep?dep.toISOString().split("T")[0]:"",
     nights:nights,
@@ -440,29 +442,29 @@ async function fetchFromMews(){
     // Calculate time windows
     const now=new Date();
     const startUtcRes=new Date(now);
-    startUtcRes.setDate(startUtcRes.getDate()-14);
+    startUtcRes.setDate(startUtcRes.getDate()-7);
     const endUtcRes=new Date(now);
-    endUtcRes.setDate(endUtcRes.getDate()+14);
+    endUtcRes.setDate(endUtcRes.getDate()+90);
 
     const startUtcAvail=new Date(now);
     const endUtcAvail=new Date(now);
-    endUtcAvail.setDate(endUtcAvail.getDate()+14);
+    endUtcAvail.setDate(endUtcAvail.getDate()+90);
 
     // BATCH 1: Configuration
-    st.umsg="(1/7) Carregando configuração...";
+    st.umsg="(1/8) Carregando configuração...";
     render();
 
     const config=await callMewsProxy("configuration/get",{});
     const enterpriseName=config.Enterprise?.Name||"";
 
-    st.umsg="(2/7) Carregando serviços...";
+    st.umsg="(2/8) Carregando serviços...";
     render();
 
     const servicesRes=await callMewsProxy("services/getAll",{Limitation:{Count:1000}});
     const services=servicesRes.Services||[];
 
     // BATCH 2: Reference data (parallel)
-    st.umsg="(3/7) Carregando taxas e fontes...";
+    st.umsg="(3/8) Carregando taxas e fontes...";
     render();
 
     const ratesRes=await fetchAllPages("rates/getAll",{Limitation:{Count:1000}},"Rates");
@@ -473,7 +475,7 @@ async function fetchFromMews(){
     const sourcesMap={};
     sourcesRes.forEach(s=>{sourcesMap[s.Id]=s.Name||""});
 
-    st.umsg="(4/7) Carregando apartamentos...";
+    st.umsg="(4/8) Carregando apartamentos...";
     render();
 
     const resourcesRes=await callMewsProxy("resources/getAll",{Extent:{Resources:true,ResourceCategories:true}});
@@ -482,21 +484,22 @@ async function fetchFromMews(){
     (resourcesRes.Resources||[]).forEach(r=>{resourcesMap[r.Id]=r});
     (resourcesRes.ResourceCategories||[]).forEach(c=>{categoriesMap[c.Id]=c});
 
-    st.umsg="(5/7) Carregando reservas...";
+    st.umsg="(5/8) Carregando reservas...";
     render();
 
     const resvRes=await fetchAllPages("reservations/getAll/2023-06-06",{
-      TimeFilter:"Colliding",
+      States:["Confirmed","Started"],
+      TimeFilter:"Start",
       StartUtc:startUtcRes.toISOString(),
       EndUtc:endUtcRes.toISOString(),
       Limitation:{Count:200},
-      Extent:{Reservations:true,Items:false,BusinessSegments:false}
+      Extent:{Reservations:true,BusinessSegments:false}
     },"Reservations");
 
-    // Filter for active reservations (Confirmed, Started, or Processed)
-    const filteredResv=resvRes.filter(r=>r.State==="Confirmed"||r.State==="Started"||r.State==="Processed");
+    // All returned reservations are already Confirmed or Started
+    const filteredResv=resvRes;
 
-    st.umsg="(6/7) Carregando clientes e disponibilidade...";
+    st.umsg="(6/8) Carregando clientes...";
     render();
 
     // Fetch customers by their IDs from reservations (AccountId in API v2023-06-06)
@@ -508,6 +511,24 @@ async function fetchFromMews(){
         const res=await callMewsProxy("customers/getAll",{CustomerIds:batch,Limitation:{Count:200}});
         (res.Customers||[]).forEach(c=>{customersMap[c.Id]=c});
       }catch(e){console.warn("SHIELD: Customer batch "+(i/200+1)+" failed:",e.message)}
+    }
+
+    st.umsg="(7/8) Carregando receita e disponibilidade...";
+    render();
+
+    // Fetch order items to calculate revenue per reservation
+    const itemsMap={};
+    const resIds=filteredResv.map(r=>r.Id);
+    for(let i=0;i<resIds.length;i+=50){
+      try{
+        const batch=resIds.slice(i,i+50);
+        const itemsRes=await callMewsProxy("orderItems/getAll",{ServiceOrderIds:batch,Limitation:{Count:1000}});
+        (itemsRes.OrderItems||[]).forEach(it=>{
+          const rid=it.ServiceOrderId;
+          if(!itemsMap[rid])itemsMap[rid]=0;
+          itemsMap[rid]+=(it.Amount?.GrossValue||0);
+        });
+      }catch(e){console.warn("SHIELD: OrderItems batch "+(Math.floor(i/50)+1)+" failed:",e.message)}
     }
 
     // Find the accommodation (Reservable) service
@@ -535,11 +556,11 @@ async function fetchFromMews(){
       });
     }catch(e){console.warn("SHIELD: Companionships fetch failed, defaulting to 1 person per reservation")}
 
-    st.umsg="(7/7) Mapeando dados...";
+    st.umsg="(8/8) Mapeando dados...";
     render();
 
     // Map reservations
-    const mappedResv=filteredResv.map(r=>mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName));
+    const mappedResv=filteredResv.map(r=>mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName,itemsMap));
 
     // Map availability for all categories at once
     const availData=mapMewsAvailability(availRes,categoriesMap);
