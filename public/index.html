@@ -259,7 +259,8 @@ async function callMewsProxy(endpoint,params){
         throw new Error("API returned non-JSON response (status "+resp.status+")")
       }
       if(!resp.ok){
-        const msg=data.error||data.details?.Message||("HTTP "+resp.status);
+        const detailMsg=data.details?.Message||data.details?.message||(typeof data.details==="string"?data.details:"")||JSON.stringify(data.details||{}).slice(0,200);
+        const msg=(data.error&&data.error!=="Mews API error"?data.error:detailMsg)||data.error||("HTTP "+resp.status);
         if(resp.status>=500&&attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}
         throw new Error(msg);
       }
@@ -495,13 +496,10 @@ async function fetchFromMews(){
     st.umsg="(6/7) Carregando clientes e disponibilidade...";
     render();
 
-    const customerIds=[...new Set(filteredResv.map(r=>r.CustomerId).filter(Boolean))];
-    let customersRes=[];
-    for(let i=0;i<customerIds.length;i+=100){
-      const batch=customerIds.slice(i,i+100);
-      const res=await callMewsProxy("customers/getAll",{CustomerIds:batch,Limitation:{Count:100}});
-      customersRes.push(...(res.Customers||[]));
-    }
+    const customersRes=await fetchAllPages("customers/getAll",{
+      UpdatedUtc:{StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString()},
+      Limitation:{Count:1000}
+    },"Customers",3);
     const customersMap={};
     customersRes.forEach(c=>{customersMap[c.Id]=c});
 
