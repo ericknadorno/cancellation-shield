@@ -237,7 +237,7 @@ function parseDuve(text){
   if(ei<0)return{};const map={};
   for(let i=1;i<lines.length;i++){
     const c=lines[i].split(",").map(x=>x.trim().replace(/"/g,""));
-    if(c[ei])map[c[ei]]={status:c[si]||"",terms:ti>=0?c[ti]||"":"",passport:pi>=0?c[pi]||":""};
+    if(c[ei])map[c[ei]]={status:c[si]||"",terms:ti>=0?c[ti]||"":"",passport:pi>=0?c[pi]||"":""};
   }
   return map;
 }
