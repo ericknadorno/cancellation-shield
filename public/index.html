@@ -455,7 +455,7 @@ async function fetchFromMews(){
     st.umsg="(2/7) Carregando serviços...";
     render();
 
-    const servicesRes=await callMewsProxy("services/getAll",{});
+    const servicesRes=await callMewsProxy("services/getAll",{Limitation:{Count:1000}});
     const services=servicesRes.Services||[];
 
     // BATCH 2: Reference data (parallel)
@@ -504,12 +504,17 @@ async function fetchFromMews(){
     customersRes.forEach(c=>{customersMap[c.Id]=c});
 
     // Find the accommodation (Reservable) service
-    const accomService=services.find(s=>s.Type==="Reservable")||services[0];
-    const availRes=await callMewsProxy("services/getAvailability",{
-      ServiceId:accomService?accomService.Id:"",
-      StartUtc:startUtcAvail.toISOString(),
-      EndUtc:endUtcAvail.toISOString()
-    });
+    const accomService=services.find(s=>s.Type==="Reservable");
+    let availRes={CategoryAvailabilities:[],DatesUtc:[]};
+    if(accomService){
+      try{
+        availRes=await callMewsProxy("services/getAvailability",{
+          ServiceId:accomService.Id,
+          StartUtc:startUtcAvail.toISOString(),
+          EndUtc:endUtcAvail.toISOString()
+        });
+      }catch(e){console.warn("SHIELD: Availability fetch failed:",e.message)}
+    }else{console.warn("SHIELD: No Reservable service found, skipping availability")}
 
     let companionsMap={};
     try{
