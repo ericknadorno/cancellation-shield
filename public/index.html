@@ -104,19 +104,19 @@ function cancelProb(score){
 function probColor(p){return p>=70?"#ef4444":p>=40?"#f59e0b":p>=15?"#60a5fa":"#22c55e"}
 
 // ─── V9 SCORING MODEL (12 signals) ───
-function isNR(r){const l=(r||\"\").toLowerCase();return l.includes("nr ")||l.startsWith("nr")||l.includes("non-ref")||l.includes("non-refundable")||l.includes("early bird")}
-function sRate(r){const l=(r||\"\").toLowerCase();if(l.includes("flex 3"))return 58;if(l.includes("standard")&&l.includes("breakfast"))return 50;if(l.includes("flex 5"))return 48;if(l.includes("semi-flex"))return 35;if(l.includes("standard")&&l.includes("booking"))return 30;if(l.includes("standard"))return 35;if(l.includes("flex")&&l.includes("ota"))return 30;if(l.includes("black friday"))return 35;if(l.includes("friends")||l.includes("family"))return 5;if(l.includes("welcome"))return 3;if(isNR(r))return 3;if(l.includes("long"))return 10;return 25}
-function sChan(s){const l=(s||\"\").toLowerCase();if(l.includes("telephone"))return 85;if(l.includes("a-hotels")||l.includes("american express"))return 82;if(l.includes("booking engine sbii"))return 42;if(l.includes("booking.com"))return 38;if(l.includes("booking engine sbi"))return 32;if(l.includes("booking engine alegria"))return 30;if(l.includes("channel"))return 35;if(l.includes("in person"))return 30;if(l.includes("message")||l.includes("email"))return 25;if(l.includes("hotels.com"))return 18;if(l.includes("airbnb"))return 14;if(l.includes("expedia"))return 17;if(l.includes("booking engine"))return 12;return 20}
+function isNR(r){const l=(r||"").toLowerCase();return l.includes("nr ")||l.startsWith("nr")||l.includes("non-ref")||l.includes("non-refundable")||l.includes("early bird")}
+function sRate(r){const l=(r||"").toLowerCase();if(l.includes("flex 3"))return 58;if(l.includes("standard")&&l.includes("breakfast"))return 50;if(l.includes("flex 5"))return 48;if(l.includes("semi-flex"))return 35;if(l.includes("standard")&&l.includes("booking"))return 30;if(l.includes("standard"))return 35;if(l.includes("flex")&&l.includes("ota"))return 30;if(l.includes("black friday"))return 35;if(l.includes("friends")||l.includes("family"))return 5;if(l.includes("welcome"))return 3;if(isNR(r))return 3;if(l.includes("long"))return 10;return 25}
+function sChan(s){const l=(s||"").toLowerCase();if(l.includes("telephone"))return 85;if(l.includes("a-hotels")||l.includes("american express"))return 82;if(l.includes("booking engine sbii"))return 42;if(l.includes("booking.com"))return 38;if(l.includes("booking engine sbi"))return 32;if(l.includes("booking engine alegria"))return 30;if(l.includes("channel"))return 35;if(l.includes("in person"))return 30;if(l.includes("message")||l.includes("email"))return 25;if(l.includes("hotels.com"))return 18;if(l.includes("airbnb"))return 14;if(l.includes("expedia"))return 17;if(l.includes("booking engine"))return 12;return 20}
 function sLT(d,p){if(!d||d<0)return 15;const b=BDC_LT[p]||BDC_LT["SB II"];if(d<=1)return Math.round(b[1]*.8);if(d<=3)return Math.round((b[3]||5)*.8+5);if(d<=7)return Math.round(b[7]*.9);if(d<=14)return Math.round(b[14]*.85);if(d<=30)return Math.round(b[30]*.85);if(d<=60)return Math.round(b[60]*.85);if(d<=90)return Math.round(b[90]*.8);return Math.round(b[999]*.8)}
 function sSea(m,p){if(!m)return 25;const b=BDC_MO[p]||BDC_MO["SB II"];const i=(m-3+12)%12;return Math.round((b[i]||30)*.7)}
 function sLOS(n){if(!n||n<=0)return 20;if(n<=2)return 20;if(n<=4)return 25;if(n<=7)return 35;if(n<=14)return 60;return 78}
-function sPay(p){const s=(p||\"\").toLowerCase().trim();if(s==="success")return 2;if(s==="fail")return 10;return 40}
+function sPay(p){const s=(p||"").toLowerCase().trim();if(s==="success")return 2;if(s==="fail")return 10;return 40}
 function sADR(a){if(!a||a<=0)return 25;if(a<100)return 12;if(a<150)return 10;if(a<200)return 20;if(a<300)return 45;return 65}
-function sNat(nat){const n=(nat||\"\").toLowerCase();if(NAT_HIGH.some(x=>n.includes(x)))return 8;if(NAT_MED.some(x=>n.includes(x)))return 3;if(NAT_LOW.some(x=>n.includes(x)))return -5;return 0}
-function natTier(nat){const n=(nat||\"\").toLowerCase();if(NAT_HIGH.some(x=>n.includes(x)))return"HIGH";if(NAT_LOW.some(x=>n.includes(x)))return"LOW";return""}
+function sNat(nat){const n=(nat||"").toLowerCase();if(NAT_HIGH.some(x=>n.includes(x)))return 8;if(NAT_MED.some(x=>n.includes(x)))return 3;if(NAT_LOW.some(x=>n.includes(x)))return -5;return 0}
+function natTier(nat){const n=(nat||"").toLowerCase();if(NAT_HIGH.some(x=>n.includes(x)))return"HIGH";if(NAT_LOW.some(x=>n.includes(x)))return"LOW";return""}
 
 function computeRisk(r,duve){
-  const rate=r.rate||"",pay=(r.payment||\"\").toLowerCase().trim();
+  const rate=r.rate||"",pay=(r.payment||"").toLowerCase().trim();
   // ─── SAFE OVERRIDES (probability <5%) ───
   if(isNR(rate)&&pay==="success")return{score:3,level:"LOW",override:"NR+Paid",prob:4};
   if(r.hasParking)return{score:2,level:"LOW",override:"Safe:Parking",prob:0};
@@ -141,7 +141,7 @@ function computeRisk(r,duve){
 }
 function tmpl(lv,d,n){if(lv==="HIGH"){if(n>=8)return"7A";if(d>14)return n>=5?"1B":"1A";if(d>7)return"2A/2B";if(d>3)return"3A/3B";return"3A"}if(lv==="MEDIUM")return d>14?"4A":"5A";return"-"}
 function offer(lv,d,n){if(lv==="HIGH"){if(n>=8)return"Welcome+mid-stay+late c-out";if(d>14)return"Early c-in+late c-out";if(d>7)return"Early c-in+upgrade";if(d>3)return"Crédito/datas alt.";return"Contacto urgente"}if(lv==="MEDIUM")return d>14?"Guia bairro":"Info check-in";return"-"}
-function chan(src,lv){const s=(src||\"\").toLowerCase();if(s.includes("booking.com"))return"BDC Extranet";if(s.includes("airbnb"))return"Airbnb";if(s.includes("expedia")||s.includes("hotels.com"))return"Expedia";return lv==="HIGH"?"WhatsApp":"Email"}
+function chan(src,lv){const s=(src||"").toLowerCase();if(s.includes("booking.com"))return"BDC Extranet";if(s.includes("airbnb"))return"Airbnb";if(s.includes("expedia")||s.includes("hotels.com"))return"Expedia";return lv==="HIGH"?"WhatsApp":"Email"}
 
 // ─── EXCEL PARSING (runs in browser via SheetJS CDN) ───
 function detectProp(wb){
@@ -179,7 +179,7 @@ function parseRes(wb){
     const products=r.Products||"";
     let rm=String(r["Space number"]||(r["Requested category"]||"").split(" - ")[0]);
     rm=rm.replace(/^SBII\s*/i,"").replace(/^SBI\s*/i,"").replace(/^ALE\s*/i,"").trim();
-    return{id:r.Identifier,guest:`${r["First name"]||""} ${r["Last name"]||\"\"}`.trim(),prop,room:rm,
+    return{id:r.Identifier,guest:`${r["First name"]||""} ${r["Last name"]||""}`.trim(),prop,room:rm,
       roomType:r["Requested category"]||"",arrival:arr?arr.toISOString().split("T")[0]:"",
       departure:dep?dep.toISOString().split("T")[0]:"",nights,daysUntil:du,leadTimeDays:lt,
       rate:r.Rate||"",adr:Math.round(adr||0),total:Math.round(r["Total amount"]||0),
@@ -760,7 +760,7 @@ function render(){
   let h="";
   // Header
   h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v9 — THE HAUS GROUP — ${(D.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
-  [" ALL",...PS].forEach(p=>{h+=`<button class="btn${st.prop===p?" on":""}\" onclick="sp('${p}')">${p}</button>`});
+  [" ALL",...PS].forEach(p=>{h+=`<button class="btn${st.prop===p?" on":""}" onclick="sp('${p}')">${p}</button>`});
   h+=`<button class="btn api" onclick="fetchFromMews()" title="Carregar dados ao vivo da Mews">🔄 Mews</button>`;
   h+=`<button class="btn warn" onclick="st.phase='upload';render()">↑ Upload</button></div></div>`;
   const bp={};PS.forEach(p=>{bp[p]=D.reservations.filter(r=>r.prop===p).length});
@@ -778,9 +778,9 @@ function render(){
   h+=`</div>`;
   // Tabs + Nav
   h+=`<div class="tabs">`;
-  [{id:"timeline",l:"▦ Timeline"},{id:"retention",l:"☎ Retenção"},{id:"overbooking",l:"⊕ Overbooking"}].forEach(t=>{h+=`<button class="tab${st.tab===t.id?" on":""}\" onclick="stab('${t.id}')">${t.l}</button>`});
+  [{id:"timeline",l:"▦ Timeline"},{id:"retention",l:"☎ Retenção"},{id:"overbooking",l:"⊕ Overbooking"}].forEach(t=>{h+=`<button class="tab${st.tab===t.id?" on":""}" onclick="stab('${t.id}')">${t.l}</button>`});
   h+=`<div class="nav"><button class="nbtn" onclick="np()">◀</button><button class="nbtn on" onclick="nt()">HOJE</button><button class="nbtn" onclick="nn()">▶</button>`;
-  [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${st.viewDays===d?" on":""}\" onclick="sd(${d})">${d}d</button>`});
+  [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${st.viewDays===d?" on":""}" onclick="sd(${d})">${d}d</button>`});
   h+=`</div></div><div class="content"><div class="main">`;
   // TIMELINE
   if(st.tab==="timeline"){
