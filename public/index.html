@@ -244,27 +244,50 @@ function parseDuve(text){
 
 // ─── MEWS API INTEGRATION ───
 async function callMewsProxy(endpoint,params){
-  const resp=await fetch("/api/mews",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({endpoint,params})
-  });
-  if(!resp.ok){
-    const err=await resp.json().catch(()=>({}));
-    throw new Error(err.error||err.details?.Message||("HTTP "+resp.status));
+  const maxRetries=2;
+  for(let attempt=0;attempt<=maxRetries;attempt++){
+    try{
+      const resp=await fetch("/api/mews",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({endpoint,params})
+      });
+      const text=await resp.text();
+      let data;
+      try{data=JSON.parse(text)}catch(e){
+        if(attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}
+        throw new Error("API returned non-JSON response (status "+resp.status+")")
+      }
+      if(!resp.ok){
+        const msg=data.error||data.details?.Message||("HTTP "+resp.status);
+        if(resp.status>=500&&attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}
+        throw new Error(msg);
+      }
+      return data;
+    }catch(e){
+      if(attempt>=maxRetries)throw e;
+      await new Promise(r=>setTimeout(r,(attempt+1)*1000));
+    }
   }
-  return resp.json();
 }
 
-async function fetchAllPages(endpoint,params,dataKey){
+async function fetchAllPages(endpoint,params,dataKey,maxPages=5){
   let allData=[];
   let cursor=null;
+  let page=0;
   do{
-    const p={...params,Limitation:{...params.Limitation,Cursor:cursor}};
-    const result=await callMewsProxy(endpoint,p);
-    const items=result[dataKey]||[];
-    allData=allData.concat(items);
-    cursor=result.Cursor||null;
+    try{
+      const p={...params,Limitation:{...params.Limitation,Cursor:cursor}};
+      const result=await callMewsProxy(endpoint,p);
+      const items=result[dataKey]||[];
+      allData=allData.concat(items);
+      cursor=result.Cursor||null;
+    }catch(e){
+      console.warn("SHIELD: Page "+(page+1)+" of "+endpoint+" failed: "+e.message+". Returning "+allData.length+" items collected so far.");
+      break;
+    }
+    page++;
+    if(page>=maxPages)break;
   }while(cursor);
   return allData;
 }
@@ -297,7 +320,7 @@ function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,c
   const rateName=ratesMap[res.RateId]||"";
 
   // Source name from sourcesMap
-  const sourceName=sourcesMap[res.BookerId]||sourcesMap[res.SourceId]||"";
+  const sourceName=sourcesMap[res.SourceId]||res.Origin||"";
 
   // Customer info
   const customer=customersMap[res.CustomerId]||{};
@@ -380,11 +403,11 @@ function mapMewsAvailability(availData,categoriesMap){
     categoryAvails.forEach(ca=>{
       const cat=categoriesMap[ca.CategoryId];
       if(!cat)return;
-      const capacity=cat.Capacities?cat.Capacities[0]?.Capacity||1:1;
       const avails=ca.Availabilities||[];
       const availOnDay=avails[idx]||0;
+      const maxAvail=Math.max(...avails,0);
 
-      totalSpaces+=capacity;
+      totalSpaces+=maxAvail;
       totalAvailable+=availOnDay;
     });
 
@@ -406,56 +429,47 @@ function mapMewsAvailability(availData,categoriesMap){
 async function fetchFromMews(){
   st.uping=true;
   st.umsg="Conectando à Mews API...";
+  const startTime=Date.now();
   render();
 
   try{
     // Calculate time windows
     const now=new Date();
     const startUtcRes=new Date(now);
-    startUtcRes.setDate(startUtcRes.getDate()-30);
+    startUtcRes.setDate(startUtcRes.getDate()-14);
     const endUtcRes=new Date(now);
-    endUtcRes.setDate(endUtcRes.getDate()+30);
+    endUtcRes.setDate(endUtcRes.getDate()+14);
 
     const startUtcAvail=new Date(now);
     const endUtcAvail=new Date(now);
-    endUtcAvail.setDate(endUtcAvail.getDate()+30);
-
-    const startDatesStr={
-      Utc:startUtcRes.toISOString()
-    };
-    const endDatesStr={
-      Utc:endUtcRes.toISOString()
-    };
+    endUtcAvail.setDate(endUtcAvail.getDate()+14);
 
     // BATCH 1: Configuration
-    st.umsg="Carregando configuração...";
+    st.umsg="(1/7) Carregando configuração...";
     render();
 
     const config=await callMewsProxy("configuration/get",{});
     const enterpriseName=config.Enterprise?.Name||"";
 
-    st.umsg="Carregando serviços...";
+    st.umsg="(2/7) Carregando serviços...";
     render();
 
     const servicesRes=await callMewsProxy("services/getAll",{});
     const services=servicesRes.Services||[];
 
     // BATCH 2: Reference data (parallel)
-    st.umsg="Carregando taxas e fontes...";
+    st.umsg="(3/7) Carregando taxas e fontes...";
     render();
 
     const ratesRes=await fetchAllPages("rates/getAll",{Limitation:{Count:1000}},"Rates");
     const ratesMap={};
     ratesRes.forEach(r=>{ratesMap[r.Id]=r.Name||""});
 
-    st.umsg="Carregando dados de origem...";
-    render();
-
     const sourcesRes=await fetchAllPages("sources/getAll",{Limitation:{Count:1000}},"Sources");
     const sourcesMap={};
     sourcesRes.forEach(s=>{sourcesMap[s.Id]=s.Name||""});
 
-    st.umsg="Carregando apartamentos...";
+    st.umsg="(4/7) Carregando apartamentos...";
     render();
 
     const resourcesRes=await callMewsProxy("resources/getAll",{Extent:{Resources:true,ResourceCategories:true}});
@@ -464,32 +478,32 @@ async function fetchFromMews(){
     (resourcesRes.Resources||[]).forEach(r=>{resourcesMap[r.Id]=r});
     (resourcesRes.ResourceCategories||[]).forEach(c=>{categoriesMap[c.Id]=c});
 
-    st.umsg="Carregando reservas...";
+    st.umsg="(5/7) Carregando reservas...";
     render();
 
     const resvRes=await fetchAllPages("reservations/getAll/2023-06-06",{
       TimeFilter:"Colliding",
       StartUtc:startUtcRes.toISOString(),
       EndUtc:endUtcRes.toISOString(),
-      Limitation:{Count:100},
+      Limitation:{Count:200},
       Extent:{Reservations:true,Items:false,BusinessSegments:false}
     },"Reservations");
 
     // Filter for active reservations (Confirmed, Started, or Processed)
     const filteredResv=resvRes.filter(r=>r.State==="Confirmed"||r.State==="Started"||r.State==="Processed");
 
-    st.umsg="Carregando clientes...";
+    st.umsg="(6/7) Carregando clientes e disponibilidade...";
     render();
 
-    const customersRes=await fetchAllPages("customers/getAll",{
-      UpdatedUtc:{StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString()},
-      Limitation:{Count:1000}
-    },"Customers");
+    const customerIds=[...new Set(filteredResv.map(r=>r.CustomerId).filter(Boolean))];
+    let customersRes=[];
+    for(let i=0;i<customerIds.length;i+=100){
+      const batch=customerIds.slice(i,i+100);
+      const res=await callMewsProxy("customers/getAll",{CustomerIds:batch,Limitation:{Count:100}});
+      customersRes.push(...(res.Customers||[]));
+    }
     const customersMap={};
     customersRes.forEach(c=>{customersMap[c.Id]=c});
-
-    st.umsg="Carregando disponibilidade...";
-    render();
 
     // Find the accommodation (Reservable) service
     const accomService=services.find(s=>s.Type==="Reservable")||services[0];
@@ -499,35 +513,33 @@ async function fetchFromMews(){
       EndUtc:endUtcAvail.toISOString()
     });
 
-    st.umsg="Carregando companhias...";
-    render();
+    let companionsMap={};
+    try{
+      const companionsRes=await fetchAllPages("companionships/getAll",{
+        ReservationIds:filteredResv.map(r=>r.Id).slice(0,200),
+        Limitation:{Count:1000}
+      },"Companionships",2);
+      companionsRes.forEach(c=>{
+        if(!companionsMap[c.ReservationId]){companionsMap[c.ReservationId]=[]}
+        companionsMap[c.ReservationId].push(c);
+      });
+    }catch(e){console.warn("SHIELD: Companionships fetch failed, defaulting to 1 person per reservation")}
 
-    const companionsRes=await fetchAllPages("companionships/getAll",{
-      UpdatedUtc:{StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString()},
-      Limitation:{Count:1000}
-    },"Companionships");
-    const companionsMap={};
-    companionsRes.forEach(c=>{
-      if(!companionsMap[c.ReservationId]){companionsMap[c.ReservationId]=[]}
-      companionsMap[c.ReservationId].push(c);
-    });
-
-    st.umsg="Mapeando dados...";
+    st.umsg="(7/7) Mapeando dados...";
     render();
 
     // Map reservations
     const mappedResv=filteredResv.map(r=>mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName));
 
-    // Map availability per service
-    const availData={};
-    (availRes.CategoryAvailabilities||[]).forEach(ca=>{
-      const mapped=mapMewsAvailability({CategoryAvailabilities:[ca],DatesUtc:availRes.DatesUtc},categoriesMap);
-      Object.assign(availData,mapped);
-    });
+    // Map availability for all categories at once
+    const availData=mapMewsAvailability(availRes,categoriesMap);
+
+    // Determine property from mapped reservations
+    const detectedProp=mappedResv.length>0?mappedResv[0].prop:"";
 
     // Merge with existing pending files
     pendingFiles.push({type:"mews-reservations",data:mappedResv});
-    pendingFiles.push({type:"mews-availability",data:availData});
+    pendingFiles.push({type:"mews-availability",data:availData,prop:detectedProp});
 
     st.umsg="Processando dados...";
     render();
@@ -535,8 +547,9 @@ async function fetchFromMews(){
     // Process as normal
     await processMewsFiles();
 
+    const elapsed=((Date.now()-startTime)/1000).toFixed(1);
     st.uping=false;
-    st.umsg="✅ Dados carregados da Mews API";
+    st.umsg=`✅ ${mappedResv.length} reservas carregadas em ${elapsed}s`;
     addLog("✅ Mews API: "+mappedResv.length+" reservas e "+Object.keys(availData).length+" dias de disponibilidade");
     render();
 
@@ -556,8 +569,9 @@ async function processMewsFiles(){
       results.res.push(...pf.data);
       results.logs.push(`✅ Mews API: ${pf.data.length} reservas carregadas`);
     }else if(pf.type==="mews-availability"){
-      results.avail["Mews"]=pf.data;
-      results.logs.push(`✅ Mews API: ${Object.keys(pf.data).length} dias de disponibilidade`);
+      const prop=pf.prop||"Mews";
+      results.avail[prop]=pf.data;
+      results.logs.push(`✅ Mews API: ${Object.keys(pf.data).length} dias de disponibilidade (${prop})`);
     }
   }
 
@@ -763,7 +777,7 @@ function render(){
   // Header
   h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v9 — THE HAUS GROUP — ${(D.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
   [" ALL",...PS].forEach(p=>{h+=`<button class="btn${st.prop===p?" on":""}" onclick="sp('${p}')">${p}</button>`});
-  h+=`<button class="btn api" onclick="fetchFromMews()" title="Carregar dados ao vivo da Mews">🔄 Mews</button>`;
+  h+=`<button class="btn api" onclick="fetchFromMews()" ${st.uping?'disabled':''} title="Carregar dados ao vivo da Mews">🔄 Mews</button>`;
   h+=`<button class="btn warn" onclick="st.phase='upload';render()">↑ Upload</button></div></div>`;
   const bp={};PS.forEach(p=>{bp[p]=D.reservations.filter(r=>r.prop===p).length});
   h+=`<div class="status"><div class="dot" style="background:#22c55e"></div>${D.reservations.length} reservas — ${bp.Alegria||0} ALE / ${bp["SB I"]||0} SBI / ${bp["SB II"]||0} SBII — modelo calibrado com 3.859 reservas</div>`;
