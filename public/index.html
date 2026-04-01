@@ -15,6 +15,7 @@ body{font-family:'JetBrains Mono',monospace;background:#0c0f1a;color:#c8d0e0;ove
 .logo h1{font-size:14px;font-weight:800;letter-spacing:1px;color:#f0f4ff}.logo small{font-size:9px;color:#4a5280;letter-spacing:2px;display:block}
 .btns{display:flex;gap:4px}.btn{padding:5px 12px;border-radius:5px;border:1px solid #1e2545;background:#12162a;color:#4a5280;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
 .btn.on{border-color:#4f6ef7;background:#1e3a8a;color:#93b4ff}.btn.warn{border-color:#f59e0b30;color:#f59e0b}
+.btn.api{border-color:#a78bfa30;color:#a78bfa;background:#6d28d930}
 .status{padding:6px 20px;background:#0e1125;border-bottom:1px solid #1e2545;font-size:9px;color:#4a5280;display:flex;align-items:center;gap:8px}
 .dot{width:6px;height:6px;border-radius:50%}
 .kpis{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid #1e2545}
@@ -49,6 +50,13 @@ body{font-family:'JetBrains Mono',monospace;background:#0c0f1a;color:#c8d0e0;ove
 .panel .row label{color:#4a5280}.panel .row span{color:#c8d0e0;font-weight:500;text-align:right;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ftag{display:inline-block;font-size:8px;padding:2px 6px;border-radius:3px;background:#ef444418;color:#ef9090;border:1px solid #ef444420;margin:1px}
 .up-zone{max-width:700px;margin:40px auto;padding:30px;text-align:center}
+.api-section{background:#6d28d918;border:1px solid #a78bfa30;border-radius:12px;padding:20px;margin-bottom:24px}
+.api-section h3{font-size:13px;font-weight:800;color:#a78bfa;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.api-section .msg{font-size:10px;color:#7a68d3;line-height:1.5;margin-bottom:12px}
+.api-btn{padding:10px 20px;background:linear-gradient(135deg,#6d28d9,#8b5cf6);color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;width:100%;margin-bottom:8px}
+.api-btn:hover{opacity:.9}
+.api-btn:disabled{opacity:.4;cursor:not-allowed}
+.api-status{font-size:9px;color:#7a68d3;padding:8px;background:#0c0f1a;border-radius:4px;border:1px solid #1e2545;margin-top:8px}
 .up-box{border:2px dashed #1e2545;border-radius:12px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center}
 .up-box:hover{border-color:#4f6ef7}.up-box.ok{border-color:#22c55e;background:#22c55e08}
 .up-btn{margin-top:16px;padding:12px 28px;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
@@ -96,19 +104,19 @@ function cancelProb(score){
 function probColor(p){return p>=70?"#ef4444":p>=40?"#f59e0b":p>=15?"#60a5fa":"#22c55e"}
 
 // ─── V9 SCORING MODEL (12 signals) ───
-function isNR(r){const l=(r||"").toLowerCase();return l.includes("nr ")||l.startsWith("nr")||l.includes("non-ref")||l.includes("non-refundable")||l.includes("early bird")}
-function sRate(r){const l=(r||"").toLowerCase();if(l.includes("flex 3"))return 58;if(l.includes("standard")&&l.includes("breakfast"))return 50;if(l.includes("flex 5"))return 48;if(l.includes("semi-flex"))return 35;if(l.includes("standard")&&l.includes("booking"))return 30;if(l.includes("standard"))return 35;if(l.includes("flex")&&l.includes("ota"))return 30;if(l.includes("black friday"))return 35;if(l.includes("friends")||l.includes("family"))return 5;if(l.includes("welcome"))return 3;if(isNR(r))return 3;if(l.includes("long"))return 10;return 25}
-function sChan(s){const l=(s||"").toLowerCase();if(l.includes("telephone"))return 85;if(l.includes("a-hotels")||l.includes("american express"))return 82;if(l.includes("booking engine sbii"))return 42;if(l.includes("booking.com"))return 38;if(l.includes("booking engine sbi"))return 32;if(l.includes("booking engine alegria"))return 30;if(l.includes("channel"))return 35;if(l.includes("in person"))return 30;if(l.includes("message")||l.includes("email"))return 25;if(l.includes("hotels.com"))return 18;if(l.includes("airbnb"))return 14;if(l.includes("expedia"))return 17;if(l.includes("booking engine"))return 12;return 20}
+function isNR(r){const l=(r||\"\").toLowerCase();return l.includes("nr ")||l.startsWith("nr")||l.includes("non-ref")||l.includes("non-refundable")||l.includes("early bird")}
+function sRate(r){const l=(r||\"\").toLowerCase();if(l.includes("flex 3"))return 58;if(l.includes("standard")&&l.includes("breakfast"))return 50;if(l.includes("flex 5"))return 48;if(l.includes("semi-flex"))return 35;if(l.includes("standard")&&l.includes("booking"))return 30;if(l.includes("standard"))return 35;if(l.includes("flex")&&l.includes("ota"))return 30;if(l.includes("black friday"))return 35;if(l.includes("friends")||l.includes("family"))return 5;if(l.includes("welcome"))return 3;if(isNR(r))return 3;if(l.includes("long"))return 10;return 25}
+function sChan(s){const l=(s||\"\").toLowerCase();if(l.includes("telephone"))return 85;if(l.includes("a-hotels")||l.includes("american express"))return 82;if(l.includes("booking engine sbii"))return 42;if(l.includes("booking.com"))return 38;if(l.includes("booking engine sbi"))return 32;if(l.includes("booking engine alegria"))return 30;if(l.includes("channel"))return 35;if(l.includes("in person"))return 30;if(l.includes("message")||l.includes("email"))return 25;if(l.includes("hotels.com"))return 18;if(l.includes("airbnb"))return 14;if(l.includes("expedia"))return 17;if(l.includes("booking engine"))return 12;return 20}
 function sLT(d,p){if(!d||d<0)return 15;const b=BDC_LT[p]||BDC_LT["SB II"];if(d<=1)return Math.round(b[1]*.8);if(d<=3)return Math.round((b[3]||5)*.8+5);if(d<=7)return Math.round(b[7]*.9);if(d<=14)return Math.round(b[14]*.85);if(d<=30)return Math.round(b[30]*.85);if(d<=60)return Math.round(b[60]*.85);if(d<=90)return Math.round(b[90]*.8);return Math.round(b[999]*.8)}
 function sSea(m,p){if(!m)return 25;const b=BDC_MO[p]||BDC_MO["SB II"];const i=(m-3+12)%12;return Math.round((b[i]||30)*.7)}
 function sLOS(n){if(!n||n<=0)return 20;if(n<=2)return 20;if(n<=4)return 25;if(n<=7)return 35;if(n<=14)return 60;return 78}
-function sPay(p){const s=(p||"").toLowerCase().trim();if(s==="success")return 2;if(s==="fail")return 10;return 40}
+function sPay(p){const s=(p||\"\").toLowerCase().trim();if(s==="success")return 2;if(s==="fail")return 10;return 40}
 function sADR(a){if(!a||a<=0)return 25;if(a<100)return 12;if(a<150)return 10;if(a<200)return 20;if(a<300)return 45;return 65}
-function sNat(nat){const n=(nat||"").toLowerCase();if(NAT_HIGH.some(x=>n.includes(x)))return 8;if(NAT_MED.some(x=>n.includes(x)))return 3;if(NAT_LOW.some(x=>n.includes(x)))return -5;return 0}
-function natTier(nat){const n=(nat||"").toLowerCase();if(NAT_HIGH.some(x=>n.includes(x)))return"HIGH";if(NAT_LOW.some(x=>n.includes(x)))return"LOW";return""}
+function sNat(nat){const n=(nat||\"\").toLowerCase();if(NAT_HIGH.some(x=>n.includes(x)))return 8;if(NAT_MED.some(x=>n.includes(x)))return 3;if(NAT_LOW.some(x=>n.includes(x)))return -5;return 0}
+function natTier(nat){const n=(nat||\"\").toLowerCase();if(NAT_HIGH.some(x=>n.includes(x)))return"HIGH";if(NAT_LOW.some(x=>n.includes(x)))return"LOW";return""}
 
 function computeRisk(r,duve){
-  const rate=r.rate||"",pay=(r.payment||"").toLowerCase().trim();
+  const rate=r.rate||"",pay=(r.payment||\"\").toLowerCase().trim();
   // ─── SAFE OVERRIDES (probability <5%) ───
   if(isNR(rate)&&pay==="success")return{score:3,level:"LOW",override:"NR+Paid",prob:4};
   if(r.hasParking)return{score:2,level:"LOW",override:"Safe:Parking",prob:0};
@@ -133,7 +141,7 @@ function computeRisk(r,duve){
 }
 function tmpl(lv,d,n){if(lv==="HIGH"){if(n>=8)return"7A";if(d>14)return n>=5?"1B":"1A";if(d>7)return"2A/2B";if(d>3)return"3A/3B";return"3A"}if(lv==="MEDIUM")return d>14?"4A":"5A";return"-"}
 function offer(lv,d,n){if(lv==="HIGH"){if(n>=8)return"Welcome+mid-stay+late c-out";if(d>14)return"Early c-in+late c-out";if(d>7)return"Early c-in+upgrade";if(d>3)return"Crédito/datas alt.";return"Contacto urgente"}if(lv==="MEDIUM")return d>14?"Guia bairro":"Info check-in";return"-"}
-function chan(src,lv){const s=(src||"").toLowerCase();if(s.includes("booking.com"))return"BDC Extranet";if(s.includes("airbnb"))return"Airbnb";if(s.includes("expedia")||s.includes("hotels.com"))return"Expedia";return lv==="HIGH"?"WhatsApp":"Email"}
+function chan(src,lv){const s=(src||\"\").toLowerCase();if(s.includes("booking.com"))return"BDC Extranet";if(s.includes("airbnb"))return"Airbnb";if(s.includes("expedia")||s.includes("hotels.com"))return"Expedia";return lv==="HIGH"?"WhatsApp":"Email"}
 
 // ─── EXCEL PARSING (runs in browser via SheetJS CDN) ───
 function detectProp(wb){
@@ -171,7 +179,7 @@ function parseRes(wb){
     const products=r.Products||"";
     let rm=String(r["Space number"]||(r["Requested category"]||"").split(" - ")[0]);
     rm=rm.replace(/^SBII\s*/i,"").replace(/^SBI\s*/i,"").replace(/^ALE\s*/i,"").trim();
-    return{id:r.Identifier,guest:`${r["First name"]||""} ${r["Last name"]||""}`.trim(),prop,room:rm,
+    return{id:r.Identifier,guest:`${r["First name"]||""} ${r["Last name"]||\"\"}`.trim(),prop,room:rm,
       roomType:r["Requested category"]||"",arrival:arr?arr.toISOString().split("T")[0]:"",
       departure:dep?dep.toISOString().split("T")[0]:"",nights,daysUntil:du,leadTimeDays:lt,
       rate:r.Rate||"",adr:Math.round(adr||0),total:Math.round(r["Total amount"]||0),
@@ -229,9 +237,391 @@ function parseDuve(text){
   if(ei<0)return{};const map={};
   for(let i=1;i<lines.length;i++){
     const c=lines[i].split(",").map(x=>x.trim().replace(/"/g,""));
-    if(c[ei])map[c[ei]]={status:c[si]||"",terms:ti>=0?c[ti]||"":"",passport:pi>=0?c[pi]||"":""};
+    if(c[ei])map[c[ei]]={status:c[si]||"",terms:ti>=0?c[ti]||"":"",passport:pi>=0?c[pi]||":""};
   }
   return map;
+}
+
+// ─── MEWS API INTEGRATION ───
+async function callMewsProxy(endpoint,params){
+  const resp=await fetch("/api/mews",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({endpoint,params})
+  });
+  if(!resp.ok){
+    const err=await resp.json().catch(()=>({}));
+    throw new Error(err.error||err.details?.Message||("HTTP "+resp.status));
+  }
+  return resp.json();
+}
+
+async function fetchAllPages(endpoint,params,dataKey){
+  let allData=[];
+  let cursor=null;
+  do{
+    const p={...params,Limitation:{...params.Limitation,Cursor:cursor}};
+    const result=await callMewsProxy(endpoint,p);
+    const items=result[dataKey]||[];
+    allData=allData.concat(items);
+    cursor=result.Cursor||null;
+  }while(cursor);
+  return allData;
+}
+
+function normPayment(mewsState){
+  if(!mewsState)return"";
+  const s=mewsState.toLowerCase();
+  if(s==="charged"||s==="completed")return"success";
+  if(s==="pending")return"";
+  if(s==="failed"||s==="canceled")return"fail";
+  return mewsState;
+}
+
+function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName){
+  // Determine property from enterprise name
+  let prop="";
+  if(enterpriseName.includes("Alegria"))prop="Alegria";
+  else if(enterpriseName.includes("Barbara II")||enterpriseName.includes("Bárbara II"))prop="SB II";
+  else if(enterpriseName.includes("Barbara I")||enterpriseName.includes("Bárbara I"))prop="SB I";
+
+  const arr=res.StartUtc?new Date(res.StartUtc):null;
+  const dep=res.EndUtc?new Date(res.EndUtc):null;
+  const cre=res.CreatedUtc?new Date(res.CreatedUtc):null;
+  const now=new Date();
+  const nights=arr&&dep?Math.round((dep-arr)/864e5):0;
+  const lt=arr&&cre?Math.round((arr-cre)/864e5):0;
+  const du=arr?Math.round((arr-now)/864e5):999;
+
+  // Rate name from ratesMap
+  const rateName=ratesMap[res.RateId]||"";
+
+  // Source name from sourcesMap
+  const sourceName=sourcesMap[res.BookerId]||sourcesMap[res.SourceId]||"";
+
+  // Customer info
+  const customer=customersMap[res.CustomerId]||{};
+  const email=customer.Email||"";
+  const phone=customer.Phone||"";
+  const firstName=customer.FirstName||"";
+  const lastName=customer.LastName||"";
+  const nationality=customer.NationalityCode||"";
+
+  // Room info
+  const resource=resourcesMap[res.AssignedResourceId]||{};
+  const categoryId=res.RequestedResourceCategoryId||resource.CategoryId||"";
+  const category=categoriesMap[categoryId]||{};
+  let room=resource.Name||"";
+  // Strip property prefix from room name
+  room=room.replace(/^SBII\s*/i,"").replace(/^SBI\s*/i,"").replace(/^ALE\s*/i,"").trim();
+
+  // Person count from companionships
+  const companions=companionsMap[res.Id]||[];
+  const personCount=1+companions.length;
+
+  // ADR calculation
+  const totalAmount=res.TotalAmount?(res.TotalAmount.Value||0):0;
+  const adr=nights>0?Math.round(totalAmount/nights):0;
+
+  // Notes from res.Notes
+  const notes=res.Notes||"";
+
+  const noc=!email&&!phone;
+
+  return{
+    id:res.Id,
+    guest:(firstName+" "+lastName).trim(),
+    prop:prop,
+    room:room,
+    roomType:category.Name||"",
+    arrival:arr?arr.toISOString().split("T")[0]:"",
+    departure:dep?dep.toISOString().split("T")[0]:"",
+    nights:nights,
+    daysUntil:du,
+    leadTimeDays:lt,
+    rate:rateName,
+    adr:adr,
+    total:Math.round(totalAmount),
+    source:sourceName,
+    payment:normPayment(res.PaymentState||""),
+    email:email,
+    phone:phone,
+    persons:personCount,
+    nationality:nationality,
+    hasNoContact:noc,
+    isSolo:personCount===1,
+    arrMonth:arr?arr.getMonth()+1:null,
+    // V9 intelligence fields
+    isRelay:email.includes("@guest.booking.com"),
+    isGenius:notes.includes("booker_is_genius"),
+    hasPet:/bringing your pet.*(Sim|Yes)/i.test(notes),
+    hasParking:false,
+    hasVoucher:!!(res.VoucherId),
+    duveCheckinNotes:notes.includes("Guest Check-in info by Duve"),
+    cardType:"",
+    classifications:"",
+    lateArrival:/between 2[0-3]|between 0[0-4]/i.test(notes),
+    travelAgency:res.TravelAgencyId||""
+  };
+}
+
+function mapMewsAvailability(availData,categoriesMap){
+  const result={};
+  const datesUtc=availData.DatesUtc||[];
+  const categoryAvails=availData.CategoryAvailabilities||[];
+
+  datesUtc.forEach((dateStr,idx)=>{
+    const date=new Date(dateStr);
+    const dateKey=date.toISOString().split("T")[0];
+
+    let totalSpaces=0;
+    let totalAvailable=0;
+
+    categoryAvails.forEach(ca=>{
+      const cat=categoriesMap[ca.CategoryId];
+      if(!cat)return;
+      const capacity=cat.Capacities?cat.Capacities[0]?.Capacity||1:1;
+      const avails=ca.Availabilities||[];
+      const availOnDay=avails[idx]||0;
+
+      totalSpaces+=capacity;
+      totalAvailable+=availOnDay;
+    });
+
+    const totalOccupied=Math.max(0,totalSpaces-totalAvailable);
+    const occPct=totalSpaces>0?Math.round(totalOccupied/totalSpaces*1000)/10:0;
+
+    result[dateKey]={
+      occ:totalOccupied,
+      spaces:totalSpaces,
+      avail:totalAvailable,
+      avgRate:0,
+      occPct:occPct
+    };
+  });
+
+  return result;
+}
+
+async function fetchFromMews(){
+  st.uping=true;
+  st.umsg="Conectando à Mews API...";
+  render();
+
+  try{
+    // Calculate time windows
+    const now=new Date();
+    const startUtcRes=new Date(now.getFullYear(),now.getMonth(),1);
+    const endUtcRes=new Date(now.getFullYear(),now.getMonth()+3,0);
+
+    const startUtcAvail=new Date(now);
+    const endUtcAvail=new Date(now);
+    endUtcAvail.setDate(endUtcAvail.getDate()+90);
+
+    const startDatesStr={
+      Utc:startUtcRes.toISOString()
+    };
+    const endDatesStr={
+      Utc:endUtcRes.toISOString()
+    };
+
+    // BATCH 1: Configuration
+    st.umsg="Carregando configuração...";
+    render();
+
+    const config=await callMewsProxy("configuration/get",{});
+    const enterpriseName=config.Enterprise?.Name||"";
+
+    st.umsg="Carregando serviços...";
+    render();
+
+    const servicesRes=await callMewsProxy("services/getAll",{});
+    const services=servicesRes.Services||[];
+
+    // BATCH 2: Reference data (parallel)
+    st.umsg="Carregando taxas e fontes...";
+    render();
+
+    const ratesRes=await fetchAllPages("rates/getAll",{Limitation:{Count:1000}},"Rates");
+    const ratesMap={};
+    ratesRes.forEach(r=>{ratesMap[r.Id]=r.Name||""});
+
+    st.umsg="Carregando dados de origem...";
+    render();
+
+    const sourcesRes=await fetchAllPages("sources/getAll",{Limitation:{Count:1000}},"Sources");
+    const sourcesMap={};
+    sourcesRes.forEach(s=>{sourcesMap[s.Id]=s.Name||""});
+
+    st.umsg="Carregando apartamentos...";
+    render();
+
+    const resourcesRes=await callMewsProxy("resources/getAll",{Extent:{Resources:true,ResourceCategories:true}});
+    const resourcesMap={};
+    const categoriesMap={};
+    (resourcesRes.Resources||[]).forEach(r=>{resourcesMap[r.Id]=r});
+    (resourcesRes.ResourceCategories||[]).forEach(c=>{categoriesMap[c.Id]=c});
+
+    st.umsg="Carregando reservas...";
+    render();
+
+    const resvRes=await fetchAllPages("reservations/getAll/2023-06-06",{
+      TimeFilter:"Colliding",
+      StartUtc:startUtcRes.toISOString(),
+      EndUtc:endUtcRes.toISOString(),
+      Limitation:{Count:1000},
+      Extent:{Reservations:true,Items:false,BusinessSegments:false}
+    },"Reservations");
+
+    // Filter for Confirmed or Started only
+    const filteredResv=resvRes.filter(r=>r.State==="Confirmed"||r.State==="Started");
+
+    st.umsg="Carregando clientes...";
+    render();
+
+    const customersRes=await fetchAllPages("customers/getAll",{
+      UpdatedUtc:{StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString()},
+      Limitation:{Count:1000}
+    },"Customers");
+    const customersMap={};
+    customersRes.forEach(c=>{customersMap[c.Id]=c});
+
+    st.umsg="Carregando disponibilidade...";
+    render();
+
+    // Find the accommodation (Reservable) service
+    const accomService=services.find(s=>s.Type==="Reservable")||services[0];
+    const availRes=await callMewsProxy("services/getAvailability",{
+      ServiceId:accomService?accomService.Id:"",
+      StartUtc:startUtcAvail.toISOString(),
+      EndUtc:endUtcAvail.toISOString()
+    });
+
+    st.umsg="Carregando companhias...";
+    render();
+
+    const companionsRes=await fetchAllPages("companionships/getAll",{
+      UpdatedUtc:{StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString()},
+      Limitation:{Count:1000}
+    },"Companionships");
+    const companionsMap={};
+    companionsRes.forEach(c=>{
+      if(!companionsMap[c.ReservationId]){companionsMap[c.ReservationId]=[]}
+      companionsMap[c.ReservationId].push(c);
+    });
+
+    st.umsg="Mapeando dados...";
+    render();
+
+    // Map reservations
+    const mappedResv=filteredResv.map(r=>mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName));
+
+    // Map availability per service
+    const availData={};
+    (availRes.CategoryAvailabilities||[]).forEach(ca=>{
+      const mapped=mapMewsAvailability({CategoryAvailabilities:[ca],DatesUtc:availRes.DatesUtc},categoriesMap);
+      Object.assign(availData,mapped);
+    });
+
+    // Merge with existing pending files
+    pendingFiles.push({type:"mews-reservations",data:mappedResv});
+    pendingFiles.push({type:"mews-availability",data:availData});
+
+    st.umsg="Processando dados...";
+    render();
+
+    // Process as normal
+    await processMewsFiles();
+
+    st.uping=false;
+    st.umsg="✅ Dados carregados da Mews API";
+    addLog("✅ Mews API: "+mappedResv.length+" reservas e "+Object.keys(availData).length+" dias de disponibilidade");
+    render();
+
+  }catch(err){
+    st.uping=false;
+    st.umsg="❌ "+err.message;
+    addLog("❌ Mews API error: "+err.message);
+    render();
+  }
+}
+
+async function processMewsFiles(){
+  const results={res:[],avail:{},duve:{},logs:[]};
+
+  for(const pf of pendingFiles){
+    if(pf.type==="mews-reservations"){
+      results.res.push(...pf.data);
+      results.logs.push(`✅ Mews API: ${pf.data.length} reservas carregadas`);
+    }else if(pf.type==="mews-availability"){
+      results.avail["Mews"]=pf.data;
+      results.logs.push(`✅ Mews API: ${Object.keys(pf.data).length} dias de disponibilidade`);
+    }
+  }
+
+  // Continue with normal processing
+  st.umsg="A calcular riscos...";
+  render();
+
+  const scored=results.res.map(r=>{
+    const{score,level,override,prob}=computeRisk(r,results.duve);
+    const factors=[];
+    if(r.isRelay)factors.push("Relay email");
+    if(sRate(r.rate)>=35)factors.push("Rate");
+    if(sChan(r.source)>=35)factors.push("Canal");
+    if(r.leadTimeDays>30)factors.push("LT:"+r.leadTimeDays+"d");
+    if(r.nights>7)factors.push("LOS:"+r.nights+"n");
+    if(sPay(r.payment)>=30)factors.push("NoPay");
+    if(sADR(r.adr)>=40)factors.push("ADR€"+r.adr);
+    if(r.hasNoContact)factors.push("NoContact");
+    const nt=natTier(r.nationality);if(nt==="HIGH")factors.push("Nat:"+r.nationality.split(" ")[0]);
+    const riskRev=Math.round(r.total*prob/100);
+    return{...r,score,level,override,prob,factors,riskRev,natTier:nt,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)};
+  });
+
+  // Compute overbooking
+  const ob=[];
+  const dnArr=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const cutoff=new Date(Date.now()+90*864e5).toISOString().split("T")[0];
+  PS.forEach(prop=>{
+    const avail=results.avail[prop];
+    if(!avail)return;
+    const pr=scored.filter(r=>r.prop===prop);
+    Object.entries(avail).forEach(([ds,dd])=>{
+      if(ds<today||ds>cutoff)return;
+      const hi=pr.filter(r=>r.level==="HIGH"&&r.arrival<=ds&&r.departure>ds);
+      if((dd.occPct||0)>=70&&hi.length>0){
+        const n=Math.min(Math.max(1,Math.floor(hi.length*.4)),3);
+        const adj=Math.max(0,n-(hi.some(r=>r.daysUntil>7)?1:0));
+        if(adj>0){
+          const fr=(dd.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0);
+          const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop()+" ("+r.score+")");
+          ob.push({date:ds,prop,occPct:dd.occPct,nHigh:hi.length,ob:adj,
+            rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),
+            roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")+" €"+rt.rate).join(" | ")||"Qualquer tipo",
+            avgRate:dd.avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],
+            hiGuests:hiGuests.join(", "),
+            week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),
+            month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"})
+          });
+        }
+      }
+    });
+  });
+  ob.sort((a,b)=>a.date.localeCompare(b.date));
+
+  const obMap={};
+  ob.forEach(o=>{
+    const key=o.prop+"|"+o.date;
+    const hiOnDay=scored.filter(r=>r.prop===o.prop&&r.level==="HIGH"&&r.arrival<=o.date&&r.departure>o.date);
+    const hiRoomIds=hiOnDay.map(r=>r.room);
+    obMap[key]={ob:o.ob,rooms:o.rooms,rate:o.avgRate,hiRooms:hiRoomIds,hiGuests:hiOnDay.slice(0,3).map(r=>r.guest.split(" ").pop())};
+  });
+
+  D={reservations:scored,availability:results.avail,overbooking:ob,obMap,duve:results.duve,log:D.log.concat(results.logs),generated:new Date().toISOString()};
+  st.phase="dashboard";st.uping=false;st.umsg="";pendingFiles=[];
+  render();
+  addLog(`Dashboard loaded: ${scored.length} reservations, ${ob.length} OB days`);
 }
 
 // ─── STATE ───
@@ -261,7 +651,6 @@ async function processFiles(){
         if(pf.type==="reservation"){
           const{prop,res,err,total,active}=parseRes(wb);
           if(err){results.logs.push(`❌ ${pf.name}: ${err}`);continue}
-          // Merge: dedup by id, keep latest
           const ids=new Set(results.res.map(r=>r.id));
           let added=0;
           for(const r of res){if(!ids.has(r.id)){results.res.push(r);ids.add(r.id);added++}}
@@ -325,11 +714,10 @@ async function processFiles(){
   });
   ob.sort((a,b)=>a.date.localeCompare(b.date));
 
-  // Build OB map for timeline overlay: obMap[prop|date] = {rooms:[{type,rate}], hiRooms:[room IDs of HIGH risk guests]}
+  // Build OB map
   const obMap={};
   ob.forEach(o=>{
     const key=o.prop+"|"+o.date;
-    // Find the HIGH risk guests on this day and their rooms
     const hiOnDay=scored.filter(r=>r.prop===o.prop&&r.level==="HIGH"&&r.arrival<=o.date&&r.departure>o.date);
     const hiRoomIds=hiOnDay.map(r=>r.room);
     obMap[key]={ob:o.ob,rooms:o.rooms,rate:o.avgRate,hiRooms:hiRoomIds,hiGuests:hiOnDay.slice(0,3).map(r=>r.guest.split(" ").pop())};
@@ -372,7 +760,8 @@ function render(){
   let h="";
   // Header
   h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v9 — THE HAUS GROUP — ${(D.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
-  ["ALL",...PS].forEach(p=>{h+=`<button class="btn${st.prop===p?" on":""}" onclick="sp('${p}')">${p}</button>`});
+  [" ALL",...PS].forEach(p=>{h+=`<button class="btn${st.prop===p?" on":""}\" onclick="sp('${p}')">${p}</button>`});
+  h+=`<button class="btn api" onclick="fetchFromMews()" title="Carregar dados ao vivo da Mews">🔄 Mews</button>`;
   h+=`<button class="btn warn" onclick="st.phase='upload';render()">↑ Upload</button></div></div>`;
   const bp={};PS.forEach(p=>{bp[p]=D.reservations.filter(r=>r.prop===p).length});
   h+=`<div class="status"><div class="dot" style="background:#22c55e"></div>${D.reservations.length} reservas — ${bp.Alegria||0} ALE / ${bp["SB I"]||0} SBI / ${bp["SB II"]||0} SBII — modelo calibrado com 3.859 reservas</div>`;
@@ -389,9 +778,9 @@ function render(){
   h+=`</div>`;
   // Tabs + Nav
   h+=`<div class="tabs">`;
-  [{id:"timeline",l:"▦ Timeline"},{id:"retention",l:"☎ Retenção"},{id:"overbooking",l:"⊕ Overbooking"}].forEach(t=>{h+=`<button class="tab${st.tab===t.id?" on":""}" onclick="stab('${t.id}')">${t.l}</button>`});
+  [{id:"timeline",l:"▦ Timeline"},{id:"retention",l:"☎ Retenção"},{id:"overbooking",l:"⊕ Overbooking"}].forEach(t=>{h+=`<button class="tab${st.tab===t.id?" on":""}\" onclick="stab('${t.id}')">${t.l}</button>`});
   h+=`<div class="nav"><button class="nbtn" onclick="np()">◀</button><button class="nbtn on" onclick="nt()">HOJE</button><button class="nbtn" onclick="nn()">▶</button>`;
-  [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${st.viewDays===d?" on":""}" onclick="sd(${d})">${d}d</button>`});
+  [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${st.viewDays===d?" on":""}\" onclick="sd(${d})">${d}d</button>`});
   h+=`</div></div><div class="content"><div class="main">`;
   // TIMELINE
   if(st.tab==="timeline"){
@@ -404,7 +793,6 @@ function render(){
         const obKey=row.prop+"|"+day;
         const obDay=D.obMap[obKey];
         if(!r){
-          // Empty cell — check if this room type matches an OB opportunity
           if(obDay&&obDay.rooms.length>0){
             const rowCat=(row.res[0]&&row.res[0].roomType)||"";
             const matchesOB=obDay.rooms.some(rt=>rowCat.includes(rt.type.split(" - ").pop().trim().split(" ")[0]));
@@ -415,10 +803,9 @@ function render(){
           }
           h+=`<div class="tl-c" style="height:${rH}px;background:${iW?"#0b0e18":"#0c0f1a"}"></div>`;return}
         const isA=r.arrival===day,bg=cb(r);
-        // If this is a HIGH risk guest on an OB day, add purple border to indicate this is who might cancel
         const isObTarget=obDay&&r.level==="HIGH"&&obDay.hiRooms.includes(row.room);
         const obStyle=isObTarget?"box-shadow:inset 0 0 0 2px #a78bfa;":"";
-        h+=`<div class="tl-c res" style="height:${rH}px;background:${bg};opacity:${isA?1:.7};${isA?"border-radius:3px 0 0 3px;":""}${obStyle}" onclick="sel('${r.id}')" title="${r.guest}|${r.level}(${r.score})${isObTarget?" ⊕OB":""}">${isA&&cW>=30?`<span style="font-size:7px;color:#fff;font-weight:800;text-shadow:0 1px 3px #000;padding:0 2px;overflow:hidden;white-space:nowrap">${(r.guest.split(" ").pop()||"").slice(0,5)}</span>`:""}</div>`});
+        h+=`<div class="tl-c res" style="height:${rH}px;background:${bg};opacity:${isA?1:.7};${isA?"border-radius:3px 0 0 3px;":""}${obStyle}" onclick="sel('${r.id}')" title="${r.guest}|${r.level}(${r.score})${isObTarget?" ⊕OB":""}">${isA&&cW>=30?`<span style="font-size:7px;color:#fff;font-weight:800;text-shadow:0 1px 3px #000;padding:0 2px;overflow:hidden;white-space:nowrap">${(r.guest.split(" ").pop()||"").slice(0,5)}</span>":""}</div>`});
       h+=`</div>`});
     h+=`</div></div><div class="legend"><span><i style="background:#ef4444"></i>HIGH</span><span><i style="background:#f59e0b"></i>MEDIUM</span><span><i style="background:#22c55e"></i>LOW</span><span><i style="background:#60a5fa"></i>NR+Paid</span><span><i style="background:#4ade80"></i>Safe</span><span><i style="background:#7c3aed;border:1px dashed #a78bfa"></i>OB +1</span></div></div>`}
   // RETENTION
@@ -431,15 +818,12 @@ function render(){
     h+=`<div class="tbl">`;
     if(!ob.length){h+=`<div style="padding:40px;text-align:center;color:#3a4270">${Object.keys(D.availability).length?"Nenhuma oportunidade no período":"Faz upload dos Availability Reports"}</div>`}
     else{
-      // Summary cards per property
       const obByProp={};ob.forEach(o=>{if(!obByProp[o.prop])obByProp[o.prop]={days:0,nights:0,rev:0};obByProp[o.prop].days++;obByProp[o.prop].nights+=o.ob;obByProp[o.prop].rev+=o.ob*o.avgRate});
       h+=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">`;
       PS.forEach(p=>{const d=obByProp[p]||{days:0,nights:0,rev:0};
         h+=`<div style="background:#12162a;border:1px solid ${d.nights>0?"#a78bfa30":"#1e2545"};border-radius:8px;padding:12px;text-align:center"><div style="font-size:8px;color:#4a5280;font-weight:700;letter-spacing:1px;margin-bottom:4px">${SH[p]}</div><div style="font-size:22px;font-weight:900;color:${d.nights>0?"#a78bfa":"#2a3050"}">+${d.nights}</div><div style="font-size:9px;color:#4a5280">${d.days} dias · €${Math.round(d.rev).toLocaleString()}</div></div>`});
       h+=`</div>`;
-      // Explanation
       h+=`<div style="background:#1e3a8a20;border:1px solid #1e3a8a40;border-radius:6px;padding:10px 14px;margin-bottom:14px"><div style="font-size:11px;font-weight:800;color:#93b4ff;margin-bottom:4px">📋 Como usar esta tabela</div><div style="font-size:9px;color:#6a7aaa;line-height:1.5">Cada linha = 1 dia onde podes abrir <b style="color:#a78bfa">apartamentos extra</b> à venda porque temos hóspedes HIGH risk que provavelmente vão cancelar.<br><b style="color:#f0f4ff">ABRIR À VENDA</b> = no Mews, cria uma reserva extra para o tipo de apartamento indicado (ou abre overbooking no Atomize para esse dia).<br><b style="color:#ef4444">QUEM PODE CANCELAR</b> = os hóspedes HIGH risk activos nesse dia (score entre parêntesis).</div></div>`;
-      // Table grouped by week
       let lastWeekLabel="";
       h+=`<table><tr><th>DATA</th><th>DIA</th><th>PROP</th><th>OCUP</th><th style="color:#ef4444">HIGH</th><th style="color:#a78bfa">ABRIR</th><th>APARTAMENTO A VENDER</th><th>RATE</th><th style="max-width:200px">QUEM PODE CANCELAR</th></tr>`;
       ob.forEach(o=>{
@@ -448,16 +832,13 @@ function render(){
         if(showWeek)h+=`<tr><td colspan="9" style="padding:8px 0 4px;font-size:9px;font-weight:800;color:#4f6ef7;letter-spacing:1px;border-bottom:1px solid #1e2545">${weekLabel.toUpperCase()}</td></tr>`;
         h+=`<tr><td style="color:#c8d0e0;font-weight:700">${fmt(o.date)}</td><td style="color:#4a5280">${o.dow}</td><td style="color:#6a7aaa;font-size:9px">${SH[o.prop]||""}</td><td style="color:${o.occPct>=90?"#ef4444":"#f59e0b"};font-weight:800">${Math.round(o.occPct)}%</td><td style="color:#ef4444;font-weight:800">${o.nHigh}</td><td style="color:#a78bfa;font-weight:900;font-size:14px;text-align:center">+${o.ob}</td><td style="color:#f0f4ff;font-size:9px;font-weight:600">${o.roomsStr}</td><td style="color:#22c55e;font-weight:700">€${o.avgRate}</td><td style="color:#4a5280;font-size:8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.hiGuests}</td></tr>`});
       h+=`</table>`;
-      // Bottom summary
       h+=`<div style="padding:10px;font-size:10px;color:#4a5280;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1e2545;margin-top:8px"><span>${ob.length} dias com oportunidade · ${ob.reduce((s,o)=>s+o.ob,0)} noites extra</span><span style="color:#22c55e;font-weight:800;font-size:12px">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()} receita potencial</span></div>`}
     h+=`</div>`}
   h+=`</div>`;
   // PANEL
   if(sel){const bg=rc(sel.level);const pc=probColor(sel.prob||0);
     h+=`<div class="panel"><div style="padding:12px 14px;border-bottom:1px solid #1e2545;display:flex;justify-content:space-between;align-items:start"><div><h2>${sel.guest}</h2><h3>${sel.prop} — ${sel.room} — ${sel.roomType}</h3></div><button onclick="csel()" style="background:0;border:0;color:#4a5280;font-size:16px;cursor:pointer">✕</button></div>`;
-    // Risk score + probability
     h+=`<div class="risk" style="background:${bg}18;border:1px solid ${bg}30"><span class="sc" style="color:${bg}">${sel.score}</span><span class="lv" style="color:${bg}">${sel.level}</span>${sel.override?`<span class="ov">${sel.override}</span>`:""}</div>`;
-    // Probability display
     h+=`<div style="margin:0 12px 8px;padding:10px 14px;background:#0c0f1a;border-radius:6px;border:1px solid #1e2545"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:9px;color:#4a5280;font-weight:700">PROBABILIDADE DE CANCELAR</span><span style="font-size:18px;font-weight:900;color:${pc}">${sel.prob||0}%</span></div><div style="background:#1e2545;border-radius:3px;height:8px;overflow:hidden"><div style="width:${sel.prob||0}%;height:100%;background:${pc};border-radius:3px;transition:width .3s"></div></div><div style="margin-top:6px;font-size:8px;color:#3a4270">€${sel.riskRev||0} revenue em risco (€${sel.total} × ${sel.prob||0}%)</div></div>`;
     h+=`<div style="padding:0 14px">`;
     [{l:"Arrival",v:fmt(sel.arrival)+" ("+sel.daysUntil+"d)"},{l:"Departure",v:fmt(sel.departure)},{l:"Noites",v:sel.nights},{l:"Rate",v:sel.rate},{l:"ADR",v:"€"+sel.adr},{l:"Total",v:"€"+sel.total},{l:"Canal",v:sel.source},{l:"Pagamento",v:sel.payment||"—"},{l:"Cartão",v:sel.cardType||"—"},{l:"Nacionalidade",v:(sel.nationality||"—")+(sel.natTier==="HIGH"?' <span class="nat-tag" style="background:#ef444420;color:#ef9090">HIGH RISK</span>':sel.natTier==="LOW"?' <span class="nat-tag" style="background:#22c55e20;color:#4ade80">LOW</span>':"")},{l:"Email",v:sel.isRelay?'<span style="color:#ef4444;font-weight:700">'+sel.email+'</span> <span class="nat-tag" style="background:#ef444420;color:#ef9090">RELAY</span>':sel.email||"—"},{l:"Tel",v:sel.phone||"—"},{l:"Genius",v:sel.isGenius?"Sim":"Não"},{l:"Parking",v:sel.hasParking?"Sim":"Não"},{l:"Pet",v:sel.hasPet?"Sim":"Não"},{l:"Duve",v:sel.duveCheckinNotes?"Check-in completo":"—"},{l:"Template",v:sel.template},{l:"Contactar via",v:sel.channel},{l:"Oferta",v:sel.offer}].forEach(d=>{h+=`<div class="row"><label>${d.l}</label><span>${d.v}</span></div>`});
@@ -473,12 +854,18 @@ function rupload(){
   const dC=pendingFiles.filter(f=>f.type==="duve").length;
   let h=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v9 — INTELLIGENT MODEL — THE HAUS GROUP</small></div></div></div>`;
   h+=`<div class="up-zone"><div style="font-size:48px;margin-bottom:12px">🛡️</div><div style="font-size:18px;font-weight:800;color:#f0f4ff;margin-bottom:4px">Cancellation Shield v9</div><div style="font-size:11px;color:#4a5280;margin-bottom:24px">12 sinais · probabilidade calibrada · 87% precisão · 92% recall</div>`;
+
+  // API Section
+  h+=`<div class="api-section"><h3>🔗 Carregar da Mews API</h3><div class="msg">Conecta à Mews API para carregar dados ao vivo. Serão carregadas reservas, disponibilidade e informações de clientes.</div><button class="api-btn" onclick="fetchFromMews()" ${st.uping?'disabled':''}>${st.uping?'⏳ '+st.umsg:'🚀 Carregar dados ao vivo'}</button>${st.umsg&&st.uping?`<div class="api-status">${st.umsg}</div>`:''}${st.umsg&&!st.uping?`<div class="msg ${st.umsg.includes("❌")?"err":"ok"}">${st.umsg}</div>`:''}</div>`;
+
+  h+=`<div style="text-align:center;margin:20px 0;color:#3a4270;font-size:10px;font-weight:700;letter-spacing:2px">OU</div>`;
+
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">`;
   h+=`<label class="up-box${rC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${rC?"✅":"📋"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Reservation Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${rC?rC+" ficheiro(s)":"Mews .xlsx (vários)"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('reservation',event)" style="display:none"></label>`;
   h+=`<label class="up-box${aC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${aC?"✅":"📊"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Availability Report</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${aC?aC+" ficheiro(s)":"Mews .xlsx (1/prop)"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('availability',event)" style="display:none"></label>`;
   h+=`<label class="up-box${dC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${dC?"✅":"👤"}</div><div style="font-size:11px;font-weight:700;color:#f0f4ff">Duve Export</div><div style="font-size:9px;color:#4a5280;margin-top:2px">${dC?"1 ficheiro":"CSV (opcional)"}</div><input type="file" accept=".csv" onchange="addFiles('duve',event)" style="display:none"></label>`;
   h+=`</div>`;
-  const btnText=st.uping?"⏳ "+st.umsg:"🚀 Processar ("+pendingFiles.length+" ficheiros)";
+  const btnText=st.uping?"⏳ "+st.umsg:("🚀 Processar ("+pendingFiles.length+" ficheiros)");
   h+=`<button class="up-btn" onclick="processFiles()" ${rC&&!st.uping?"":"disabled"}>${btnText}</button>`;
   if(st.umsg&&!st.uping)h+=`<div class="msg ${st.umsg.includes("❌")?"err":"ok"}">${st.umsg}</div>`;
   // Show processing log
