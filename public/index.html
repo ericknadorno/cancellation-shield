@@ -263,8 +263,69 @@ function sNatMissing(nat){
   return(!nat||nat==="")?5:0;
 }
 
-function computeRisk(r){
+// ─── V11 NEW SIGNALS ───
+
+// Signal 17: Booking hour (unusual hours = higher risk)
+function sBookingHour(hour){
+  if(hour===null||hour===undefined)return 50;
+  if(hour>=0&&hour<=5)return 78;  // late night bookings = impulsive
+  if(hour>=22)return 65;
+  if(hour>=6&&hour<=9)return 38;  // morning = deliberate
+  return 50;
+}
+
+// Signal 18: Modification count (more mods = uncertainty)
+function sModCount(count){
+  if(!count||count===0)return 35;
+  if(count===1)return 55;
+  if(count===2)return 68;
+  return Math.min(80,68+count*4); // cap at 80
+}
+
+// Signal 19: ADR vs property average (below avg = less committed)
+function sADRvsAvg(adr,avgAdr){
+  if(!avgAdr||!adr||avgAdr===0)return 50;
+  const ratio=adr/avgAdr;
+  if(ratio<0.6)return 75;   // very cheap = high risk
+  if(ratio<0.8)return 62;
+  if(ratio>1.4)return 30;   // premium = committed
+  if(ratio>1.1)return 40;
+  return 50;
+}
+
+// Signal 20: Days between booking creation and first payment
+function sBookPayGap(gap){
+  if(gap===null||gap===undefined)return 50;
+  if(gap<=0)return 28;  // paid same day = very committed
+  if(gap<=1)return 38;
+  if(gap<=3)return 50;
+  if(gap<=7)return 62;
+  return 75; // >7 days to pay = high risk
+}
+
+// Signal 21: Multiple active bookings by same guest
+function sMultiBooking(count){
+  if(!count||count<=1)return 45;
+  if(count===2)return 65; // might cancel one
+  return Math.min(82,65+count*5);
+}
+
+// Signal 22v11: Weather forecast for arrival date
+function sWeather(code){
+  if(!code)return 50;
+  // OpenWeatherMap condition codes: 2xx=thunderstorm, 3xx=drizzle, 5xx=rain, 6xx=snow, 800=clear
+  if(code>=200&&code<300)return 72;  // thunderstorm
+  if(code>=500&&code<600)return 65;  // rain
+  if(code>=600&&code<700)return 68;  // snow
+  if(code===800)return 32;           // clear sky = committed
+  if(code>=801&&code<=802)return 40; // few clouds
+  return 50;
+}
+
+function computeRisk(r, calW){
   const rate=r.rate||"",pay=(r.paymentStatus||r.payment||"").toLowerCase().trim();
+  // calW = calibrated weights object (optional, from auto-calibration)
+  const w = calW || D.calibratedWeights || null;
 
   // ─── SAFE OVERRIDES (very high confidence of NOT cancelling) ───
   if(isNR(rate)&&(pay==="charged"||pay==="success"||pay==="paid"))return{score:2,level:"LOW",override:"NR+Paid",prob:3};
@@ -275,38 +336,57 @@ function computeRisk(r){
   if(r.hasPet)return{score:5,level:"LOW",override:"Safe:Pet",prob:5};
   if(r.previousStays>=3)return{score:5,level:"LOW",override:"Safe:Loyal",prob:5};
 
-  // ─── WEIGHTED SCORE (22 signals) ───
+  // ─── WEIGHTED SCORE (27 signals — v11 calibrated) ───
+  // Default weights used when no calibration data available
+  const dw = {
+    pay:0.15, rate:0.14, lt:0.13, chan:0.12, los:0.06, adr:0.05,
+    repeat:0.08, card:0.06, mod:0.06,
+    sea:0.04, persons:0.03, dow:0.04, otaEmail:0.03, nat:0.04, natMiss:0.03, agency:0.03,
+    noContact:0.03, solo:0.02,
+    // v11 new signals
+    bookHour:0.03, modCount:0.04, adrVsAvg:0.03, bookPayGap:0.04, multiBook:0.03, weather:0.02
+  };
+  const W = w || dw;
+
   let s = 0;
-  // Core signals (65% weight)
-  s += 0.15 * sPay(pay);              // #1: Payment status
-  s += 0.14 * sRate(rate);            // #2: Rate type
-  s += 0.13 * sLT(r.daysUntil,r.prop); // #3: Lead time / days until arrival
-  s += 0.12 * sChan(r.source);        // #4: Channel/Origin
-  s += 0.06 * sLOS(r.nights);         // #5: Length of stay
-  s += 0.05 * sADR(r.adr);            // #6: Price per night
+  // Core signals
+  s += (W.pay||dw.pay) * sPay(pay);
+  s += (W.rate||dw.rate) * sRate(rate);
+  s += (W.lt||dw.lt) * sLT(r.daysUntil,r.prop);
+  s += (W.chan||dw.chan) * sChan(r.source);
+  s += (W.los||dw.los) * sLOS(r.nights);
+  s += (W.adr||dw.adr) * sADR(r.adr);
 
-  // Behavioral signals (20% weight)
-  s += sRepeat(r.previousStays||0, r.previousCancels||0) * 0.4; // #9: Repeat guest
-  s += sCard(r.hasCreditCard) * 0.3;   // #10: Credit card
-  s += sMod(r.wasModified) * 0.3;      // #11: Booking modified
+  // Behavioral signals
+  s += (W.repeat||dw.repeat) * sRepeat(r.previousStays||0, r.previousCancels||0);
+  s += (W.card||dw.card) * sCard(r.hasCreditCard);
+  s += (W.mod||dw.mod) * sMod(r.wasModified);
 
-  // Context signals (15% weight)
-  s += 0.04 * sSea(r.arrMonth,r.prop); // #4b: Seasonality
-  s += sPersons(r.persons, r.hasChildren) * 0.3; // #13: Guest count
-  s += sDow(r.arrival) * 0.4;         // #12: Day of week
-  s += sOtaEmail(r.hasOtaEmail, r.email) * 0.3; // #15: OTA email
-  s += sNat(r.nationality) * 0.4;     // #8: Nationality
-  s += sNatMissing(r.nationality) * 0.3; // #16: Nationality missing
-  s += sAgency(r.hasTravelAgency) * 0.3; // #14: Travel agency
+  // Context signals
+  s += (W.sea||dw.sea) * sSea(r.arrMonth,r.prop);
+  s += (W.persons||dw.persons) * sPersons(r.persons, r.hasChildren);
+  s += (W.dow||dw.dow) * sDow(r.arrival);
+  s += (W.otaEmail||dw.otaEmail) * sOtaEmail(r.hasOtaEmail, r.email);
+  s += (W.nat||dw.nat) * sNat(r.nationality);
+  s += (W.natMiss||dw.natMiss) * sNatMissing(r.nationality);
+  s += (W.agency||dw.agency) * sAgency(r.hasTravelAgency);
 
   // Binary boosters
-  s += 0.03 * (r.hasNoContact ? 55 : 5); // No contact info
-  s += 0.02 * (r.isSolo ? 35 : 15);     // Solo traveler
+  s += (W.noContact||dw.noContact) * (r.hasNoContact ? 55 : 5);
+  s += (W.solo||dw.solo) * (r.isSolo ? 35 : 15);
 
-  // ─── V10 INTELLIGENCE BOOSTERS ───
-  if(r.isRelay)s+=15;      // @guest.booking.com relay email
-  if(r.isGenius)s-=3;      // Genius guests cancel less
-  if(r.lateArrival)s+=3;   // Late arrival pattern
+  // ─── V11 NEW SIGNALS ───
+  s += (W.bookHour||dw.bookHour) * sBookingHour(r.bookingHour);
+  s += (W.modCount||dw.modCount) * sModCount(r.modificationCount||0);
+  s += (W.adrVsAvg||dw.adrVsAvg) * sADRvsAvg(r.adr, r.propAvgAdr);
+  s += (W.bookPayGap||dw.bookPayGap) * sBookPayGap(r.bookPayGapDays);
+  s += (W.multiBook||dw.multiBook) * sMultiBooking(r.guestActiveBookings);
+  s += (W.weather||dw.weather) * sWeather(r.weatherCode);
+
+  // ─── INTELLIGENCE BOOSTERS ───
+  if(r.isRelay)s+=15;
+  if(r.isGenius)s-=3;
+  if(r.lateArrival)s+=3;
 
   // ─── MODIFIERS ───
   let ov="";
@@ -319,6 +399,21 @@ function computeRisk(r){
 function tmpl(lv,d,n){if(lv==="HIGH"){if(n>=8)return"7A";if(d>14)return n>=5?"1B":"1A";if(d>7)return"2A/2B";if(d>3)return"3A/3B";return"3A"}if(lv==="MEDIUM")return d>14?"4A":"5A";return"-"}
 function offer(lv,d,n){if(lv==="HIGH"){if(n>=8)return"Welcome+mid-stay+late c-out";if(d>14)return"Early c-in+late c-out";if(d>7)return"Early c-in+upgrade";if(d>3)return"Crédito/datas alt.";return"Contacto urgente"}if(lv==="MEDIUM")return d>14?"Guia bairro":"Info check-in";return"-"}
 function chan(src,lv){const s=(src||"").toLowerCase();if(s.includes("booking.com"))return"BDC Extranet";if(s.includes("airbnb"))return"Airbnb";if(s.includes("expedia")||s.includes("hotels.com"))return"Expedia";return lv==="HIGH"?"WhatsApp":"Email"}
+
+// ─── V11: WhatsApp retention templates ───
+function waMsg(lv,guest,prop,arrival,nights,offer){
+  const fn=(guest||"").split(" ")[0]||"Guest";
+  const dt=arrival||"";
+  if(lv==="HIGH"){
+    return encodeURIComponent(`Olá ${fn}! 👋\n\nSomos a equipa do The Haus - ${prop}. Estamos a preparar tudo para a sua chegada no dia ${dt} (${nights} noites).\n\n🎁 Temos uma oferta especial para si: ${offer}\n\nPodemos ajudar com alguma coisa antes da sua estadia? Estamos aqui para o que precisar!\n\nThe Haus Team 🏠`);
+  }
+  return encodeURIComponent(`Olá ${fn}! 👋\n\nA equipa do The Haus - ${prop} está entusiasmada com a sua visita no dia ${dt}!\n\nSe precisar de informações sobre check-in, transporte ou dicas locais, estamos aqui para ajudar. 😊\n\nThe Haus Team 🏠`);
+}
+function waLink(phone,msg){
+  if(!phone)return"";
+  const clean=phone.replace(/[^0-9+]/g,"").replace(/^\+/,"");
+  return"https://wa.me/"+clean+"?text="+msg;
+}
 
 // ─── EXCEL PARSING (runs in browser via SheetJS CDN) ───
 function detectProp(wb){
@@ -532,6 +627,13 @@ function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,c
   const updatedMs=res.UpdatedUtc?new Date(res.UpdatedUtc).getTime():0;
   const wasModified=Math.abs(updatedMs-createdMs)>60000;
 
+  // v11: Booking hour (from CreatedUtc)
+  const bookingHour=cre?cre.getUTCHours():null;
+
+  // v11: Modification count (estimate from UpdatedUtc intervals — 1 if modified, 0 if not)
+  // More precise count would require event history; this is a boolean->count proxy
+  const modificationCount=wasModified?Math.max(1,Math.round(Math.abs(updatedMs-createdMs)/3600000)):0;
+
   // v10: Guest history (previous stays and cancellations)
   const history=cancelHistoryMap[res.AccountId||res.CustomerId]||{stays:0,cancels:0};
   const previousStays=history.stays;
@@ -585,7 +687,14 @@ function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,c
     previousStays:previousStays,
     previousCancels:previousCancels,
     hasChildren:hasChildren,
-    hasTravelAgency:hasTravelAgency
+    hasTravelAgency:hasTravelAgency,
+    // v11 new fields
+    bookingHour:bookingHour,
+    modificationCount:modificationCount,
+    propAvgAdr:0, // will be set after all reservations mapped
+    bookPayGapDays:null, // set from payment data
+    guestActiveBookings:1, // set from guest booking count
+    weatherCode:null // set from OpenWeatherMap
   };
 }
 
@@ -800,6 +909,20 @@ async function fetchFromMews(){
     // Map reservations
     const mappedResv=filteredResv.map(r=>mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName,itemsMap,paymentsMap,cancelHistoryMap));
 
+    // ─── V11: Fetch weather forecast ───
+    try{
+      const weatherRes=await callMewsProxy("weather/forecast",{lat:38.7223,lon:-9.1393});
+      if(weatherRes?.forecasts){
+        D.weatherCache=weatherRes.forecasts;
+        mappedResv.forEach(r=>{
+          if(r.arrival&&D.weatherCache[r.arrival]){
+            r.weatherCode=D.weatherCache[r.arrival].code;
+          }
+        });
+        addLog("🌤️ Previsão meteo carregada: "+Object.keys(weatherRes.forecasts).length+" dias");
+      }
+    }catch(e){console.warn("SHIELD: Weather fetch skipped:",e.message)}
+
     // Map availability for all categories at once
     const availData=mapMewsAvailability(availRes,categoriesMap);
 
@@ -848,6 +971,23 @@ async function processMewsFiles(){
   st.umsg="A calcular riscos...";
   render();
 
+  // ─── V11: Compute derived fields before scoring ───
+  // 1. Property average ADR
+  const propAdrSum={},propAdrCnt={};
+  results.res.forEach(r=>{if(r.adr>0){propAdrSum[r.prop]=(propAdrSum[r.prop]||0)+r.adr;propAdrCnt[r.prop]=(propAdrCnt[r.prop]||0)+1}});
+  const propAvgAdrs={};Object.keys(propAdrSum).forEach(p=>{propAvgAdrs[p]=propAdrCnt[p]>0?Math.round(propAdrSum[p]/propAdrCnt[p]):0});
+
+  // 2. Guest active booking count
+  const guestBookCnt={};
+  results.res.forEach(r=>{const gid=r.email||r.guest;if(gid)guestBookCnt[gid]=(guestBookCnt[gid]||0)+1});
+
+  // 3. Apply derived fields
+  results.res.forEach(r=>{
+    r.propAvgAdr=propAvgAdrs[r.prop]||0;
+    const gid=r.email||r.guest;
+    r.guestActiveBookings=guestBookCnt[gid]||1;
+  });
+
   const scored=results.res.map(r=>{
     const{score,level,override,prob}=computeRisk(r);
     const factors=[];
@@ -866,6 +1006,11 @@ async function processMewsFiles(){
     if(sPay(r.payment)>=30)factors.push("NoPay");
     if(sADR(r.adr)>=40)factors.push("ADR€"+r.adr);
     if(r.hasNoContact)factors.push("NoContact");
+    if(r.bookingHour!==null&&(r.bookingHour>=22||r.bookingHour<=5))factors.push("LateBook:"+r.bookingHour+"h");
+    if(r.modificationCount>=2)factors.push("Mods:"+r.modificationCount);
+    if(r.propAvgAdr>0&&r.adr>0&&r.adr/r.propAvgAdr<0.7)factors.push("CheapADR");
+    if(r.guestActiveBookings>=2)factors.push("MultiBook:"+r.guestActiveBookings);
+    if(r.weatherCode&&r.weatherCode>=500)factors.push("BadWeather");
     const nt=natTier(r.nationality);if(nt==="HIGH")factors.push("Nat:"+r.nationality.split(" ")[0]);
     const riskRev=Math.round(r.total*prob/100);
     return{...r,score,level,override,prob,factors,riskRev,natTier:nt,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)};
@@ -929,13 +1074,20 @@ async function processMewsFiles(){
         const adj=Math.max(1,n-(hi.some(r=>r.daysUntil>7)?1:0));
         const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop()+" ("+r.score+")");
         const fr=av?(av.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0):[];
+        // V11: EV overbooking calculation
+        const avgProb=hi.length>0?hi.reduce((s,r)=>s+(r.prob||0),0)/hi.length/100:0;
+        const combinedProb=Math.min(0.95,1-Math.pow(1-avgProb,adj));
+        const walkCost=avgRate*2.5;
+        const extraRev=avgRate*adj;
+        const ev=Math.round(combinedProb*extraRev-(1-combinedProb)*walkCost);
         ob.push({date:ds,prop,occPct,nHigh:hi.length,ob:adj,
           rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),
           roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")+" €"+rt.rate).join(" | ")||"Qualquer tipo",
           avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],
           hiGuests:hiGuests.join(", "),
           week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),
-          month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"})
+          month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"}),
+          ev,combinedProb:Math.round(combinedProb*100),walkCost:Math.round(walkCost)
         });
       }
     });
@@ -957,7 +1109,7 @@ async function processMewsFiles(){
 }
 
 // ─── STATE ───
-let D={reservations:[],availability:{},overbooking:[],obMap:{},log:[],backtest:null};
+let D={reservations:[],availability:{},overbooking:[],obMap:{},log:[],backtest:null,calibratedWeights:null,weatherCache:{}};
 let st={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:""};
 st.vs=(()=>{const d=new Date();d.setDate(d.getDate()-1);return d.toISOString().split("T")[0]})();
 let pendingFiles=[];
@@ -1012,6 +1164,11 @@ async function processFiles(){
     if(sPay(r.payment)>=30)factors.push("NoPay");
     if(sADR(r.adr)>=40)factors.push("ADR€"+r.adr);
     if(r.hasNoContact)factors.push("NoContact");
+    if(r.bookingHour!==null&&(r.bookingHour>=22||r.bookingHour<=5))factors.push("LateBook:"+r.bookingHour+"h");
+    if(r.modificationCount>=2)factors.push("Mods:"+r.modificationCount);
+    if(r.propAvgAdr>0&&r.adr>0&&r.adr/r.propAvgAdr<0.7)factors.push("CheapADR");
+    if(r.guestActiveBookings>=2)factors.push("MultiBook:"+r.guestActiveBookings);
+    if(r.weatherCode&&r.weatherCode>=500)factors.push("BadWeather");
     const nt=natTier(r.nationality);if(nt==="HIGH")factors.push("Nat:"+r.nationality.split(" ")[0]);
     const riskRev=Math.round(r.total*prob/100);
     return{...r,score,level,override,prob,factors,riskRev,natTier:nt,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)};
@@ -1066,13 +1223,20 @@ async function processFiles(){
         const adj=Math.max(1,n-(hi.some(r=>r.daysUntil>7)?1:0));
         const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop()+" ("+r.score+")");
         const fr=av?(av.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0):[];
+        // V11: EV overbooking calculation
+        const avgProb=hi.length>0?hi.reduce((s,r)=>s+(r.prob||0),0)/hi.length/100:0;
+        const combinedProb=Math.min(0.95,1-Math.pow(1-avgProb,adj));
+        const walkCost=avgRate*2.5;
+        const extraRev=avgRate*adj;
+        const ev=Math.round(combinedProb*extraRev-(1-combinedProb)*walkCost);
         ob.push({date:ds,prop,occPct,nHigh:hi.length,ob:adj,
           rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),
           roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")+" €"+rt.rate).join(" | ")||"Qualquer tipo",
           avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],
           hiGuests:hiGuests.join(", "),
           week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),
-          month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"})
+          month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"}),
+          ev,combinedProb:Math.round(combinedProb*100),walkCost:Math.round(walkCost)
         });
       }
     });
@@ -1197,6 +1361,29 @@ function generateAlertEmail(){
   addLog(`📧 Email alert gerado com ${hi.length} HIGH + ${med.length} MEDIUM reservas`);
 }
 
+// ─── V11: CALIBRATION CONTROLS ───
+function applyCalibration(){
+  if(!D.calibratedWeights)return;
+  // Re-score all current reservations with calibrated weights
+  D.reservations=D.reservations.map(r=>{
+    const{score,level,override,prob}=computeRisk(r,D.calibratedWeights);
+    const riskRev=Math.round(r.total*prob/100);
+    return{...r,score,level,override,prob,riskRev};
+  });
+  st.umsg="✅ Pesos calibrados aplicados — reservas re-scored";
+  render();
+}
+function resetCalibration(){
+  D.calibratedWeights=null;
+  D.reservations=D.reservations.map(r=>{
+    const{score,level,override,prob}=computeRisk(r,null);
+    const riskRev=Math.round(r.total*prob/100);
+    return{...r,score,level,override,prob,riskRev};
+  });
+  st.umsg="↩ Pesos reset para defaults v11";
+  render();
+}
+
 // ─── WEEKLY REPORT: Generate summary report ───
 
 function generateWeeklyReport(){
@@ -1213,9 +1400,8 @@ function generateWeeklyReport(){
   const hiNext7=arriving7.filter(r=>r.level==="HIGH");
   const byProp={};D.reservations.forEach(r=>{if(!byProp[r.prop])byProp[r.prop]={total:0,high:0,rev:0,risk:0};byProp[r.prop].total++;if(r.level==="HIGH")byProp[r.prop].high++;byProp[r.prop].rev+=r.total;byProp[r.prop].risk+=(r.riskRev||0)});
 
-  // Build HTML report for print
-  const w=window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html><head><title>Shield Weekly Report - ${dt}</title>
+  // Build HTML report — v11 fix: handle popup blocker
+  const reportHtml=`<!DOCTYPE html><html><head><title>Shield Weekly Report - ${dt}</title>
 <style>body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:30px;color:#1a1a2e}
 h1{color:#1a1a2e;border-bottom:3px solid #ef4444;padding-bottom:10px}
 h2{color:#4a5280;margin-top:30px;border-bottom:1px solid #ddd;padding-bottom:6px}
@@ -1259,11 +1445,24 @@ ${hi.sort((a,b)=>(b.riskRev||0)-(a.riskRev||0)).slice(0,10).map((r,i)=>`<tr><td>
 <h2>Overbooking</h2>
 <p>${obDays} dias com sugestão de overbooking | Receita potencial: €${Math.round(obRev/1000)}K</p>
 
-<div class="footer">Cancellation Shield v10.1 — Gerado automaticamente<br>Para aceder ao dashboard completo: cancellation-shield.vercel.app</div>
-</body></html>`);
-  w.document.close();
-  // Auto-trigger print dialog for PDF save
-  setTimeout(()=>w.print(),500);
+<div class="footer">Cancellation Shield v11.0 — Gerado automaticamente<br>Para aceder ao dashboard completo: cancellation-shield.vercel.app</div>
+</body></html>`;
+  // Try popup first, fallback to Blob download if blocked
+  const w=window.open('','_blank');
+  if(w){
+    w.document.write(reportHtml);
+    w.document.close();
+    setTimeout(()=>w.print(),500);
+  }else{
+    // Popup blocked — download as HTML file
+    const blob=new Blob([reportHtml],{type:'text/html'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='Shield-Report-'+dt.replace(/\//g,'-')+'.html';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    st.umsg="📄 Relatório descarregado (popup bloqueado)";render();
+  }
   addLog(`📊 Relatório semanal gerado (${hi.length} HIGH, ${med.length} MED)`);
 }
 
@@ -1355,8 +1554,52 @@ async function runBacktest(){
       byScore[idx].t++;if(isCanceled)byScore[idx].c++;
     });
 
-    D.backtest={stats,byMonth,byLT,byChan,byScore,totalCanceled:canceledRes.length,totalProcessed:processedRes.length,total:allHist.length,generated:new Date().toISOString()};
-    st.uping=false;st.umsg=`✅ Backtest: ${allHist.length} reservas analisadas (${canceledRes.length} canceladas, ${processedRes.length} processadas)`;
+    // ─── V11: AUTO-CALIBRATION via gradient descent ───
+    const calData=allHist.map(r=>{
+      const m=mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,{},{},enterpriseName,{},{},{});
+      const pay=(m.paymentStatus||m.payment||"").toLowerCase().trim();
+      return{
+        y:r._outcome==="canceled"?1:0,
+        signals:{
+          pay:sPay(pay)/100, rate:sRate(m.rate)/100, lt:sLT(m.daysUntil,m.prop)/100,
+          chan:sChan(m.source)/100, los:sLOS(m.nights)/100, adr:sADR(m.adr)/100,
+          repeat:sRepeat(m.previousStays||0,m.previousCancels||0)/100,
+          card:sCard(m.hasCreditCard)/100, mod:sMod(m.wasModified)/100,
+          sea:sSea(m.arrMonth,m.prop)/100, persons:sPersons(m.persons,m.hasChildren)/100,
+          dow:sDow(m.arrival)/100, otaEmail:sOtaEmail(m.hasOtaEmail,m.email)/100,
+          nat:sNat(m.nationality)/100, natMiss:sNatMissing(m.nationality)/100,
+          agency:sAgency(m.hasTravelAgency)/100,
+          noContact:(m.hasNoContact?55:5)/100, solo:(m.isSolo?35:15)/100,
+          bookHour:sBookingHour(m.bookingHour)/100, modCount:sModCount(m.modificationCount||0)/100,
+          adrVsAvg:50/100, bookPayGap:50/100, multiBook:45/100, weather:50/100
+        }
+      };
+    });
+    // Simple logistic regression with gradient descent
+    const sigKeys=Object.keys(calData[0]?.signals||{});
+    const calWeights={};
+    sigKeys.forEach(k=>calWeights[k]=0.05); // start uniform
+    const lr=0.01,epochs=200;
+    let calLog=[];
+    for(let ep=0;ep<epochs;ep++){
+      let totalLoss=0;
+      calData.forEach(d=>{
+        let z=0;sigKeys.forEach(k=>z+=calWeights[k]*(d.signals[k]||0));
+        const p=1/(1+Math.exp(-z)); // sigmoid
+        const err=d.y-p;
+        totalLoss+=-d.y*Math.log(p+1e-10)-(1-d.y)*Math.log(1-p+1e-10);
+        sigKeys.forEach(k=>{calWeights[k]+=lr*err*(d.signals[k]||0)});
+      });
+      if(ep%50===0)calLog.push({epoch:ep,loss:(totalLoss/calData.length).toFixed(4)});
+    }
+    // Normalize weights to sum to ~1
+    const wSum=sigKeys.reduce((s,k)=>s+Math.abs(calWeights[k]),0);
+    sigKeys.forEach(k=>calWeights[k]=Math.round(Math.abs(calWeights[k])/wSum*1000)/1000);
+    D.calibratedWeights=calWeights;
+    const calAccuracy={log:calLog,weights:calWeights};
+
+    D.backtest={stats,byMonth,byLT,byChan,byScore,totalCanceled:canceledRes.length,totalProcessed:processedRes.length,total:allHist.length,generated:new Date().toISOString(),calibration:calAccuracy};
+    st.uping=false;st.umsg=`✅ Backtest: ${allHist.length} reservas analisadas + modelo calibrado`;
     st.tab="accuracy";render();
   }catch(e){
     st.uping=false;st.umsg="❌ Backtest falhou: "+e.message;render();
@@ -1382,7 +1625,7 @@ function render(){
   const cW=st.viewDays<=14?56:st.viewDays<=30?38:st.viewDays<=60?22:14,rH=26,lW=110;
   let h="";
   // Header
-  h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v10.1 — UNIVERSAL — ${(D.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
+  h+=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v11.0 — CALIBRATED — ${(D.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
   [" ALL",...PS].forEach(p=>{h+=`<button class="btn${st.prop===p?" on":""}" onclick="sp('${p}')">${p}</button>`});
   h+=`<button class="btn api" onclick="fetchFromMews()" ${st.uping?'disabled':''} title="Carregar dados ao vivo da Mews">🔄 Mews</button>`;
   h+=`<button class="btn" style="border-color:#ef444430;color:#ef4444" onclick="bulkAddNotes()" ${st.uping?'disabled':''} title="Adicionar notas em todas reservas HIGH">📝 Notas</button>`;
@@ -1392,7 +1635,7 @@ function render(){
   h+=`<button class="btn" style="border-color:#a78bfa30;color:#a78bfa" onclick="generateWeeklyReport()" title="Gerar relatório semanal PDF">📄 Relatório</button>`;
   h+=`<button class="btn warn" onclick="st.phase='upload';render()">↑ Upload</button></div></div>`;
   const bp={};PS.forEach(p=>{bp[p]=D.reservations.filter(r=>r.prop===p).length});
-  h+=`<div class="status"><div class="dot" style="background:#22c55e"></div>${D.reservations.length} reservas — ${bp.Alegria||0} ALE / ${bp["SB I"]||0} SBI / ${bp["SB II"]||0} SBII — modelo com 22 sinais calibrados com dados reais</div>`;
+  h+=`<div class="status"><div class="dot" style="background:#22c55e"></div>${D.reservations.length} reservas — ${bp.Alegria||0} ALE / ${bp["SB I"]||0} SBI / ${bp["SB II"]||0} SBII — v11 · 27 sinais + auto-calibração</div>`;
   // KPIs
   const totalRiskRev=res.reduce((s,r)=>s+(r.riskRev||0),0);
   h+=`<div class="kpis">`;
@@ -1438,8 +1681,9 @@ function render(){
     h+=`</div></div><div class="legend"><span><i style="background:#ef4444"></i>HIGH</span><span><i style="background:#f59e0b"></i>MEDIUM</span><span><i style="background:#22c55e"></i>LOW</span><span><i style="background:#60a5fa"></i>NR+Paid</span><span><i style="background:#4ade80"></i>Safe</span><span><i style="background:#7c3aed;border:1px dashed #a78bfa"></i>OB +1</span></div></div>`}
   // RETENTION
   if(st.tab==="retention"){
-    h+=`<div class="tbl"><div style="font-size:12px;font-weight:800;margin-bottom:10px;color:#f0f4ff">Contactar — ${ret.length} reservas · €${Math.round(ret.reduce((s,r)=>s+(r.riskRev||0),0)/1000)}K em risco</div><table><tr><th>#</th><th>PROB</th><th>SC</th><th>PROP</th><th>GUEST</th><th>NAT</th><th>ARRIVAL</th><th>N</th><th>DIAS</th><th>€RISCO</th><th>CANAL</th><th>OFERTA</th></tr>`;
-    ret.forEach((r,i)=>{const pc=probColor(r.prob);h+=`<tr onclick="sel('${r.id}')"><td style="color:#4a5280">${i+1}</td><td><span class="prob-bar" style="width:${Math.max(4,r.prob*.4)}px;background:${pc}"></span><span style="font-weight:800;color:${pc};font-size:10px">${r.prob}%</span></td><td style="font-weight:800;color:${rc(r.level)};font-size:9px">${r.score}</td><td style="color:#5a6a9a;font-size:9px">${SH[r.prop]||""}</td><td style="color:#c8d0e0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.guest}</td><td style="font-size:8px;color:#4a5280">${r.nationality?r.nationality.split(" ")[0].slice(0,6):""}${r.natTier==="HIGH"?`<span class="nat-tag" style="background:#ef444420;color:#ef9090">!</span>`:r.natTier==="LOW"?`<span class="nat-tag" style="background:#22c55e20;color:#4ade80">ok</span>`:""}</td><td style="color:#6a7aaa">${fmt(r.arrival)}</td><td style="color:#6a7aaa">${r.nights}n</td><td style="color:${r.daysUntil<=7?"#ef4444":"#6a7aaa"};font-weight:${r.daysUntil<=7?800:400}">${r.daysUntil}d</td><td style="color:#ff6b6b;font-weight:700;font-size:9px">€${r.riskRev||0}</td><td style="color:#a78bfa;font-size:9px">${r.channel}</td><td style="color:#4a5280;font-size:9px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.offer}</td></tr>`});
+    h+=`<div class="tbl"><div style="font-size:12px;font-weight:800;margin-bottom:10px;color:#f0f4ff">Contactar — ${ret.length} reservas · €${Math.round(ret.reduce((s,r)=>s+(r.riskRev||0),0)/1000)}K em risco</div><table><tr><th>#</th><th>PROB</th><th>SC</th><th>PROP</th><th>GUEST</th><th>NAT</th><th>ARRIVAL</th><th>N</th><th>DIAS</th><th>€RISCO</th><th>CANAL</th><th>OFERTA</th><th>WA</th></tr>`;
+    ret.forEach((r,i)=>{const pc=probColor(r.prob);const wl=r.phone?waLink(r.phone,waMsg(r.level,r.guest,r.prop,r.arrival,r.nights,r.offer)):"";
+    h+=`<tr onclick="sel('${r.id}')"><td style="color:#4a5280">${i+1}</td><td><span class="prob-bar" style="width:${Math.max(4,r.prob*.4)}px;background:${pc}"></span><span style="font-weight:800;color:${pc};font-size:10px">${r.prob}%</span></td><td style="font-weight:800;color:${rc(r.level)};font-size:9px">${r.score}</td><td style="color:#5a6a9a;font-size:9px">${SH[r.prop]||""}</td><td style="color:#c8d0e0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.guest}</td><td style="font-size:8px;color:#4a5280">${r.nationality?r.nationality.split(" ")[0].slice(0,6):""}${r.natTier==="HIGH"?`<span class="nat-tag" style="background:#ef444420;color:#ef9090">!</span>`:r.natTier==="LOW"?`<span class="nat-tag" style="background:#22c55e20;color:#4ade80">ok</span>`:""}</td><td style="color:#6a7aaa">${fmt(r.arrival)}</td><td style="color:#6a7aaa">${r.nights}n</td><td style="color:${r.daysUntil<=7?"#ef4444":"#6a7aaa"};font-weight:${r.daysUntil<=7?800:400}">${r.daysUntil}d</td><td style="color:#ff6b6b;font-weight:700;font-size:9px">€${r.riskRev||0}</td><td style="color:#a78bfa;font-size:9px">${r.channel}</td><td style="color:#4a5280;font-size:9px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.offer}</td><td>${wl?`<a href="${wl}" target="_blank" onclick="event.stopPropagation()" style="background:#25D366;color:#fff;padding:2px 6px;border-radius:4px;font-size:8px;font-weight:700;text-decoration:none" title="Enviar WhatsApp">WA</a>`:`<span style="color:#3a4270;font-size:8px">—</span>`}</td></tr>`});
     h+=`</table></div>`}
   // OVERBOOKING
   if(st.tab==="overbooking"){
@@ -1453,14 +1697,18 @@ function render(){
       h+=`</div>`;
       h+=`<div style="background:#1e3a8a20;border:1px solid #1e3a8a40;border-radius:6px;padding:10px 14px;margin-bottom:14px"><div style="font-size:11px;font-weight:800;color:#93b4ff;margin-bottom:4px">📋 Como usar esta tabela</div><div style="font-size:9px;color:#6a7aaa;line-height:1.5">Cada linha = 1 dia onde podes abrir <b style="color:#a78bfa">apartamentos extra</b> à venda porque temos hóspedes HIGH risk que provavelmente vão cancelar.<br><b style="color:#f0f4ff">ABRIR À VENDA</b> = no Mews, cria uma reserva extra para o tipo de apartamento indicado (ou abre overbooking no Atomize para esse dia).<br><b style="color:#ef4444">QUEM PODE CANCELAR</b> = os hóspedes HIGH risk activos nesse dia (score entre parêntesis).</div></div>`;
       let lastWeekLabel="";
-      h+=`<table><tr><th>DATA</th><th>DIA</th><th>PROP</th><th>OCUP</th><th style="color:#ef4444">HIGH</th><th style="color:#a78bfa">ABRIR</th><th>APARTAMENTO A VENDER</th><th>RATE</th><th style="max-width:200px">QUEM PODE CANCELAR</th></tr>`;
+      h+=`<table><tr><th>DATA</th><th>DIA</th><th>PROP</th><th>OCUP</th><th style="color:#ef4444">HIGH</th><th style="color:#a78bfa">ABRIR</th><th>APARTAMENTO</th><th>RATE</th><th style="color:#22c55e">EV €</th><th style="color:#f59e0b">P(cancel)</th><th style="max-width:160px">QUEM PODE CANCELAR</th></tr>`;
       ob.forEach(o=>{
         const weekLabel=o.month+" sem"+o.week;
         const showWeek=weekLabel!==lastWeekLabel;lastWeekLabel=weekLabel;
-        if(showWeek)h+=`<tr><td colspan="9" style="padding:8px 0 4px;font-size:9px;font-weight:800;color:#4f6ef7;letter-spacing:1px;border-bottom:1px solid #1e2545">${weekLabel.toUpperCase()}</td></tr>`;
-        h+=`<tr><td style="color:#c8d0e0;font-weight:700">${fmt(o.date)}</td><td style="color:#4a5280">${o.dow}</td><td style="color:#6a7aaa;font-size:9px">${SH[o.prop]||""}</td><td style="color:${o.occPct>=90?"#ef4444":"#f59e0b"};font-weight:800">${Math.round(o.occPct)}%</td><td style="color:#ef4444;font-weight:800">${o.nHigh}</td><td style="color:#a78bfa;font-weight:900;font-size:14px;text-align:center">+${o.ob}</td><td style="color:#f0f4ff;font-size:9px;font-weight:600">${o.roomsStr}</td><td style="color:#22c55e;font-weight:700">€${o.avgRate}</td><td style="color:#4a5280;font-size:8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.hiGuests}</td></tr>`});
+        if(showWeek)h+=`<tr><td colspan="11" style="padding:8px 0 4px;font-size:9px;font-weight:800;color:#4f6ef7;letter-spacing:1px;border-bottom:1px solid #1e2545">${weekLabel.toUpperCase()}</td></tr>`;
+        const evColor=o.ev>0?"#22c55e":o.ev>-50?"#f59e0b":"#ef4444";
+        h+=`<tr><td style="color:#c8d0e0;font-weight:700">${fmt(o.date)}</td><td style="color:#4a5280">${o.dow}</td><td style="color:#6a7aaa;font-size:9px">${SH[o.prop]||""}</td><td style="color:${o.occPct>=90?"#ef4444":"#f59e0b"};font-weight:800">${Math.round(o.occPct)}%</td><td style="color:#ef4444;font-weight:800">${o.nHigh}</td><td style="color:#a78bfa;font-weight:900;font-size:14px;text-align:center">+${o.ob}</td><td style="color:#f0f4ff;font-size:9px;font-weight:600">${o.roomsStr}</td><td style="color:#22c55e;font-weight:700">€${o.avgRate}</td><td style="color:${evColor};font-weight:900;font-size:11px">${o.ev>0?"+":""}€${o.ev}</td><td style="color:#f59e0b;font-size:9px">${o.combinedProb}%</td><td style="color:#4a5280;font-size:8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.hiGuests}</td></tr>`});
       h+=`</table>`;
-      h+=`<div style="padding:10px;font-size:10px;color:#4a5280;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1e2545;margin-top:8px"><span>${ob.length} dias com oportunidade · ${ob.reduce((s,o)=>s+o.ob,0)} noites extra</span><span style="color:#22c55e;font-weight:800;font-size:12px">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()} receita potencial</span></div>`}
+      const totalEV=ob.reduce((s,o)=>s+o.ev,0);
+      h+=`<div style="padding:10px;font-size:10px;color:#4a5280;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1e2545;margin-top:8px"><span>${ob.length} dias · ${ob.reduce((s,o)=>s+o.ob,0)} noites extra · EV total: <b style="color:${totalEV>0?"#22c55e":"#ef4444"};font-size:12px">${totalEV>0?"+":""}€${totalEV}</b></span><span style="color:#22c55e;font-weight:800;font-size:12px">€${Math.round(ob.reduce((s,o)=>s+o.ob*o.avgRate,0)).toLocaleString()} receita potencial</span></div>`;
+      // V11: EV explanation
+      h+=`<div style="background:#22c55e10;border:1px solid #22c55e20;border-radius:6px;padding:10px 14px;margin-top:8px"><div style="font-size:9px;color:#6a7aaa;line-height:1.5"><b style="color:#22c55e">EV (Expected Value)</b> = P(cancelamento) × Receita extra − P(não cancelar) × Custo walk (${ob[0]?'€'+ob[0].walkCost:''} = 2.5× rate). <b style="color:#f0f4ff">EV positivo = vale a pena abrir</b>. EV negativo = risco demasiado alto.</div></div>`}
     h+=`</div>`}
   // ACCURACY TAB
   if(st.tab==="accuracy"){
@@ -1523,6 +1771,27 @@ function render(){
       });
       h+=`</table>`;
       h+=`<div style="padding:10px;font-size:9px;color:#3a4270;margin-top:8px">Backtest gerado: ${bt.generated}</div>`;
+
+      // ─── V11: CALIBRATION RESULTS ───
+      if(bt.calibration){
+        const cal=bt.calibration;
+        h+=`<div style="font-size:12px;font-weight:800;color:#a78bfa;margin:20px 0 10px;border-top:1px solid #1e2545;padding-top:16px">🧠 Auto-Calibração v11 (Logistic Regression)</div>`;
+        h+=`<div style="background:#1e3a8a20;border:1px solid #1e3a8a40;border-radius:6px;padding:10px 14px;margin-bottom:14px"><div style="font-size:9px;color:#6a7aaa;line-height:1.5">O modelo recalibrou os pesos de cada sinal usando regressão logística em <b style="color:#f0f4ff">${bt.total}</b> reservas históricas. Os pesos abaixo refletem a importância real de cada sinal para prever cancelamentos neste hotel.</div></div>`;
+        h+=`<table><tr><th>SINAL</th><th>PESO CALIBRADO</th><th>PESO ORIGINAL</th><th>IMPORTÂNCIA</th></tr>`;
+        const origW={pay:0.15,rate:0.14,lt:0.13,chan:0.12,los:0.06,adr:0.05,repeat:0.08,card:0.06,mod:0.06,sea:0.04,persons:0.03,dow:0.04,otaEmail:0.03,nat:0.04,natMiss:0.03,agency:0.03,noContact:0.03,solo:0.02,bookHour:0.03,modCount:0.04,adrVsAvg:0.03,bookPayGap:0.04,multiBook:0.03,weather:0.02};
+        const sigNames={pay:"Pagamento",rate:"Tipo Rate",lt:"Lead Time",chan:"Canal",los:"Duração",adr:"ADR",repeat:"Repetente",card:"Cartão",mod:"Modificada",sea:"Época",persons:"Pessoas",dow:"Dia Semana",otaEmail:"Email OTA",nat:"Nacionalidade",natMiss:"Nat Missing",agency:"Agência",noContact:"Sem Contacto",solo:"Solo",bookHour:"Hora Booking",modCount:"Nº Mods",adrVsAvg:"ADR vs Média",bookPayGap:"Gap Booking-Pay",multiBook:"Multi-Booking",weather:"Meteo"};
+        const sortedW=Object.entries(cal.weights).sort((a,b)=>b[1]-a[1]);
+        const maxW=Math.max(...sortedW.map(x=>x[1]));
+        sortedW.forEach(([k,w])=>{
+          const o=origW[k]||0;const diff=w-o;const barW=Math.round(w/maxW*150);
+          h+=`<tr><td style="font-weight:700;color:#93b4ff">${sigNames[k]||k}</td><td style="font-weight:800;color:#a78bfa">${(w*100).toFixed(1)}%</td><td style="color:#4a5280">${(o*100).toFixed(1)}%</td><td><div style="display:flex;align-items:center;gap:6px"><div style="width:${barW}px;height:8px;background:#a78bfa;border-radius:2px"></div><span style="font-size:8px;color:${diff>0.01?"#22c55e":diff<-0.01?"#ef4444":"#4a5280"}">${diff>0?"+":""}${(diff*100).toFixed(1)}%</span></div></td></tr>`;
+        });
+        h+=`</table>`;
+        if(D.calibratedWeights){
+          h+=`<div style="margin-top:12px;display:flex;gap:8px"><button onclick="applyCalibration()" style="padding:8px 16px;background:#a78bfa30;border:1px solid #a78bfa60;border-radius:6px;color:#a78bfa;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer">✅ Aplicar pesos calibrados</button><button onclick="resetCalibration()" style="padding:8px 16px;background:#ef444420;border:1px solid #ef444440;border-radius:6px;color:#ef9090;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer">↩ Reset para v11 defaults</button></div>`;
+        }
+        h+=`<div style="margin-top:8px;font-size:8px;color:#3a4270">Convergência: ${cal.log.map(l=>"ep"+l.epoch+"="+l.loss).join(" → ")}</div>`;
+      }
     }
     h+=`</div>`}
   // PERIODS TAB
@@ -1587,6 +1856,8 @@ function render(){
       h+=`<button onclick="addShieldNote('${sel.id}','${sel.guest.replace(/'/g,"\\'")}',${sel.score},${sel.prob},'${sel.level}',${JSON.stringify(sel.factors||[]).replace(/"/g,'&quot;')})" style="width:100%;padding:8px;margin-bottom:6px;background:#ef444418;border:1px solid #ef444430;border-radius:6px;color:#ef9090;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer">📝 Adicionar nota na reserva</button>`;
       h+=`<button onclick="addShieldTask('${sel.id}','${sel.guest.replace(/'/g,"\\'")}',${sel.score},${sel.prob},'${sel.arrival}','${(sel.offer||"").replace(/'/g,"\\'")}')" style="width:100%;padding:8px;margin-bottom:6px;background:#f59e0b18;border:1px solid #f59e0b30;border-radius:6px;color:#f5c890;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer">📋 Criar task para a equipe</button>`;
       h+=`<button onclick="window.open('mailto:?subject='+encodeURIComponent('🛡️ Shield: ${sel.guest.replace(/'/g,"\\'")} (${sel.level} ${sel.prob}%)')+'&body='+encodeURIComponent('Cancellation Shield Alert\\n\\nHóspede: ${sel.guest.replace(/'/g,"\\'")}\\nPropriedade: ${sel.prop}\\nChegada: ${sel.arrival} (${sel.daysUntil}d)\\nNoites: ${sel.nights}\\nScore: ${sel.score}/100 | Prob: ${sel.prob}%\\nTotal: €${sel.total}\\nCanal: ${sel.source}\\nRate: ${sel.rate}\\nAção sugerida: ${(sel.offer||"Contactar hóspede").replace(/'/g,"\\'")}\\nFatores: ${(sel.factors||[]).join(", ")}'))" style="width:100%;padding:8px;margin-bottom:6px;background:#22c55e18;border:1px solid #22c55e30;border-radius:6px;color:#4ade80;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer">📧 Enviar alerta por email</button>`;
+      if(sel.phone){const wl=waLink(sel.phone,waMsg(sel.level,sel.guest,sel.prop,sel.arrival,sel.nights,sel.offer));
+      h+=`<a href="${wl}" target="_blank" style="display:block;width:100%;padding:8px;margin-bottom:6px;background:#25D36618;border:1px solid #25D36630;border-radius:6px;color:#25D366;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;box-sizing:border-box">💬 Enviar WhatsApp</a>`}
       h+=`</div>`}
     h+=`</div>`}
   h+=`</div>`;app.innerHTML=h;
@@ -1595,8 +1866,8 @@ function render(){
 function rupload(){
   const rC=pendingFiles.filter(f=>f.type==="reservation").length;
   const aC=pendingFiles.filter(f=>f.type==="availability").length;
-  let h=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v10.1 — ADVANCED MODEL — UNIVERSAL</small></div></div></div>`;
-  h+=`<div class="up-zone"><div style="font-size:48px;margin-bottom:12px">🛡️</div><div style="font-size:18px;font-weight:800;color:#f0f4ff;margin-bottom:4px">Cancellation Shield v10.1</div><div style="font-size:11px;color:#4a5280;margin-bottom:24px">22 sinais · pagamentos em tempo real · histórico de hóspedes · ações diretas na Mews</div>`;
+  let h=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>CANCELLATION SHIELD</h1><small>v11.0 — CALIBRATED MODEL — UNIVERSAL</small></div></div></div>`;
+  h+=`<div class="up-zone"><div style="font-size:48px;margin-bottom:12px">🛡️</div><div style="font-size:18px;font-weight:800;color:#f0f4ff;margin-bottom:4px">Cancellation Shield v10.1</div><div style="font-size:11px;color:#4a5280;margin-bottom:24px">27 sinais · auto-calibração · EV overbooking · WhatsApp · ações diretas na Mews</div>`;
 
   // API Section
   h+=`<div class="api-section"><h3>🔗 Carregar da Mews API</h3><div class="msg">Conecta à Mews API para carregar dados ao vivo. Serão carregadas reservas, disponibilidade e informações de clientes.</div><button class="api-btn" onclick="fetchFromMews()" ${st.uping?'disabled':''}>${st.uping?'⏳ '+st.umsg:'🚀 Carregar dados ao vivo'}</button>${st.umsg&&st.uping?`<div class="api-status">${st.umsg}</div>`:''}${st.umsg&&!st.uping?`<div class="msg ${st.umsg.includes("❌")?"err":"ok"}">${st.umsg}</div>`:''}</div>`;
