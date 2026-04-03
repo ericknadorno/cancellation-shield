@@ -6,19 +6,43 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   const CLIENT_TOKEN = process.env.MEWS_CLIENT_TOKEN;
-  const ACCESS_TOKEN = process.env.MEWS_ACCESS_TOKEN;
   const CLIENT = process.env.MEWS_CLIENT_NAME || "nexo 1.0";
   const BASE = process.env.MEWS_API_BASE || "https://api.mews-demo.com/api/connector/v1";
 
-  if (!CLIENT_TOKEN || !ACCESS_TOKEN) {
-    return res.status(500).json({ error: "Mews tokens not configured" });
+  if (!CLIENT_TOKEN) {
+    return res.status(500).json({ error: "MEWS_CLIENT_TOKEN not configured" });
   }
 
-  const { endpoint, params } = req.body || {};
+  const { endpoint, params, property } = req.body || {};
+
+  // Property-to-token mapping
+  const PROPERTY_TOKENS = {
+    hq: process.env.MEWS_ACCESS_TOKEN_HQ,
+    alegria: process.env.MEWS_ACCESS_TOKEN_ALEGRIA,
+    sbi: process.env.MEWS_ACCESS_TOKEN_SBI,
+    sbii: process.env.MEWS_ACCESS_TOKEN_SBII
+  };
+
+  // Discovery: return which properties are configured
+  if (endpoint === "properties") {
+    const available = Object.entries(PROPERTY_TOKENS)
+      .filter(([, token]) => !!token)
+      .map(([key]) => key);
+    return res.status(200).json({ properties: available });
+  }
+
   if (!endpoint) return res.status(400).json({ error: "Missing endpoint" });
 
+  // Resolve access token: property-specific or legacy fallback
+  const accessToken = property
+    ? PROPERTY_TOKENS[property]
+    : (process.env.MEWS_ACCESS_TOKEN || Object.values(PROPERTY_TOKENS).find(Boolean));
+
+  if (!accessToken) {
+    return res.status(400).json({ error: "No access token for property: " + (property || "default") });
+  }
+
   const ALLOWED = [
-    // Read
     "configuration/get",
     "services/getAll",
     "services/getAvailability",
@@ -30,7 +54,6 @@ export default async function handler(req, res) {
     "payments/getAll",
     "orderItems/getAll",
     "companionships/getAll",
-    // Write
     "serviceOrderNotes/add",
     "tasks/add",
     "services/updateAvailability"
@@ -43,7 +66,7 @@ export default async function handler(req, res) {
   try {
     const body = {
       ClientToken: CLIENT_TOKEN,
-      AccessToken: ACCESS_TOKEN,
+      AccessToken: accessToken,
       Client: CLIENT,
       ...(params || {})
     };
