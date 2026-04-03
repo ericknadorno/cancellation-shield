@@ -462,7 +462,7 @@ const nexo=(function(){
       if(deadline<new Date())deadline.setTime(Date.now()+86400000);
       const name=`nexo: Contactar ${guestName} (${prob}% risco)`;
       const desc=`nexo detectou risco ${prob}% de cancelamento.\nChegada: ${arrival}\nSugestão: ${ofr}`;
-      await callMewsProxy("tasks/add",{Tasks:[{Name:name.slice(0,100),Description:desc,DeadlineUtc:deadline.toISOString(),ServiceOrderId:resvId}]});
+      await callMewsProxy("tasks/add",{Name:name.slice(0,100),Description:desc,DeadlineUtc:deadline.toISOString(),ServiceOrderId:resvId});
       addLog(`Task: ${guestName}`);
       if(btn){btn.textContent="✓ Task criada";btn.style.background="#34C759";btn.style.color="#fff";btn.style.borderColor="#34C759";btn.style.opacity="1"}
       return true
