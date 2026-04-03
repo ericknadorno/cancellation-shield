@@ -118,6 +118,7 @@ const nexo=(function(){
   const SIGMOID_MIN=3;
 
   // ─── UTILITIES ───
+  const esc=s=>{if(!s)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")};
   const fmt=d=>{if(!d)return"";const p=d.split("-");return p[2]+"/"+p[1]};
   const dayName=d=>["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d+"T12:00:00").getDay()];
   const riskColor=l=>l==="HIGH"?"#FF3B30":l==="MEDIUM"?"#FF9500":"#34C759";
@@ -262,7 +263,7 @@ const nexo=(function(){
 
   // ─── MEWS API ───
   let activeProperty=null;
-  async function callMewsProxy(endpoint,params){const maxRetries=2;for(let attempt=0;attempt<=maxRetries;attempt++){try{const resp=await fetch("/api/mews",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({endpoint,params,property:activeProperty})});const text=await resp.text();let res;try{res=JSON.parse(text)}catch(e){if(attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}throw new Error("API returned non-JSON response (status "+resp.status+")")}if(!resp.ok){const detailMsg=res.details?.Message||res.details?.message||(typeof res.details==="string"?res.details:"")||JSON.stringify(res.details||{}).slice(0,200);const msg=(res.error&&res.error!=="Mews API error"?res.error:detailMsg)||res.error||("HTTP "+resp.status);if(resp.status>=500&&attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}throw new Error(msg)}return res}catch(e){if(attempt>=maxRetries)throw e;await new Promise(r=>setTimeout(r,(attempt+1)*1000))}}}
+  async function callMewsProxy(endpoint,params){const maxRetries=2;for(let attempt=0;attempt<=maxRetries;attempt++){try{const resp=await fetch("/api/mews",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({endpoint,params,property:activeProperty})});const text=await resp.text();let res;try{res=JSON.parse(text)}catch(e){if(attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}throw new Error("API returned non-JSON response (status "+resp.status+")")}if(!resp.ok){const msg=res.message||res.error||("HTTP "+resp.status);if(resp.status>=500&&attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}if(resp.status===401||resp.status===403){throw new Error("Autenticação falhou ("+resp.status+"): "+msg)}throw new Error(msg)}return res}catch(e){if(attempt>=maxRetries)throw e;if(e.message.includes("Autenticação"))throw e;await new Promise(r=>setTimeout(r,(attempt+1)*1000))}}}
   async function fetchAllPages(endpoint,params,dataKey,maxPages=5){let allData=[];let cursor=null;let page=0;do{try{const p={...params,Limitation:{...params.Limitation,Cursor:cursor}};const result=await callMewsProxy(endpoint,p);const items=result[dataKey]||[];allData=allData.concat(items);cursor=result.Cursor||null}catch(e){addLog("nexo: Page "+(page+1)+" of "+endpoint+" failed: "+e.message);break}page++;if(page>=maxPages)break}while(cursor);return allData}
   async function discoverProperties(){try{const resp=await fetch("/api/mews",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({endpoint:"properties"})});const data=await resp.json();return data.properties||[]}catch(e){return[]}}
   function normPayment(s){if(!s)return"";const l=s.toLowerCase();if(l==="charged"||l==="completed")return"success";if(l==="pending")return"";if(l==="failed"||l==="canceled")return"fail";return s}
@@ -272,7 +273,8 @@ const nexo=(function(){
   function mapMewsAvailability(availData,categoriesMap){const result={};const datesUtc=availData.DatesUtc||[];const categoryAvails=availData.CategoryAvailabilities||[];datesUtc.forEach((dateStr,idx)=>{const date=new Date(dateStr);const dateKey=date.toISOString().split("T")[0];let totalSpaces=0;let totalAvailable=0;const rooms=[];categoryAvails.forEach(ca=>{const cat=categoriesMap[ca.CategoryId];if(!cat)return;const avails=ca.Availabilities||[];const availOnDay=avails[idx]||0;const maxAvail=Math.max(...avails,0);totalSpaces+=maxAvail;totalAvailable+=availOnDay;rooms.push({type:cat.Name||ca.CategoryId,categoryId:ca.CategoryId,avail:availOnDay,capacity:maxAvail,rate:0})});const totalOccupied=Math.max(0,totalSpaces-totalAvailable);const occPct=totalSpaces>0?Math.round(totalOccupied/totalSpaces*1000)/10:0;result[dateKey]={occ:totalOccupied,spaces:totalSpaces,avail:totalAvailable,avgRate:0,occPct,rooms}});return result}
 
   async function fetchFromMews(){
-    state.uping=true;state.umsg="Descobrindo propriedades...";const startTime=Date.now();render();
+    if(state.uping){addLog("Fetch já em progresso, ignorando");return}
+    state.uping=true;state.umsg="Descobrindo propriedades...";pendingFiles=[];const startTime=Date.now();render();
     try{
       const now=new Date();const startUtcRes=new Date(now);startUtcRes.setDate(startUtcRes.getDate()-7);const endUtcRes=new Date(now);endUtcRes.setDate(endUtcRes.getDate()+90);const startUtcAvail=new Date(now);const endUtcAvail=new Date(now);endUtcAvail.setDate(endUtcAvail.getDate()+90);
 
@@ -477,13 +479,16 @@ const nexo=(function(){
   // ─── ACTIONS ───
   function addLog(msg){data.log.push(`[${new Date().toLocaleTimeString()}] ${msg}`);console.log("nexo:",msg)}
 
+  const _notesDone=new Set();
   async function addNote(resvId,guestName,score,prob,level,factors){
+    if(_notesDone.has(resvId)){addLog("Nota já adicionada para "+resvId);return true}
     const btn=document.getElementById("note-btn-"+resvId);
     if(btn){btn.disabled=true;btn.textContent="A adicionar nota...";btn.style.opacity="0.6"}
     try{
       const text=`nexo — Risco ${level} (${prob}%)\nFactores: ${factors.join(", ")}\nGerado: ${new Date().toLocaleString("pt")}`;
       await callMewsProxy("serviceOrderNotes/add",{ServiceOrderNotes:[{ServiceOrderId:resvId,Text:text,Type:"General"}]});
-      addLog(`Nota: ${guestName} (${level})`);
+      _notesDone.add(resvId);
+      addLog(`WRITE Nota: ${guestName} (${level})`);
       if(btn){btn.textContent="✓ Nota adicionada";btn.style.background="#34C759";btn.style.color="#fff";btn.style.borderColor="#34C759";btn.style.opacity="1"}
       return true
     }catch(e){
@@ -493,7 +498,9 @@ const nexo=(function(){
     }
   }
 
+  const _tasksDone=new Set();
   async function addTask(resvId,guestName,score,prob,arrival,ofr){
+    if(_tasksDone.has(resvId)){addLog("Task já criada para "+resvId);return true}
     const btn=document.getElementById("task-btn-"+resvId);
     if(btn){btn.disabled=true;btn.textContent="A criar task...";btn.style.opacity="0.6"}
     try{
@@ -502,7 +509,8 @@ const nexo=(function(){
       const name=`nexo: Contactar ${guestName} (${prob}% risco)`;
       const desc=`nexo detectou risco ${prob}% de cancelamento.\nChegada: ${arrival}\nSugestão: ${ofr}`;
       await callMewsProxy("tasks/add",{Name:name.slice(0,100),Description:desc,DeadlineUtc:deadline.toISOString(),ServiceOrderId:resvId});
-      addLog(`Task: ${guestName}`);
+      _tasksDone.add(resvId);
+      addLog(`WRITE Task: ${guestName}`);
       if(btn){btn.textContent="✓ Task criada";btn.style.background="#34C759";btn.style.color="#fff";btn.style.borderColor="#34C759";btn.style.opacity="1"}
       return true
     }catch(e){
@@ -512,9 +520,14 @@ const nexo=(function(){
     }
   }
 
+  const _obInFlight=new Set();
   async function openForSale(obIndex){
     const o=data.overbooking[obIndex];
     if(!o)return;
+    const obKey=o.prop+"|"+o.date;
+    if(_obInFlight.has(obKey)){addLog("Overbooking já em progresso para "+obKey);return}
+    if(!confirm("PRODUÇÃO: Abrir +"+o.ob+" quarto(s) à venda em "+fmt(o.date)+" ("+o.prop+")?\n\nEsta ação altera disponibilidade real no Mews."))return;
+    _obInFlight.add(obKey);
     const btn=document.getElementById("ob-btn-"+obIndex);
     if(btn){btn.disabled=true;btn.textContent="A abrir...";btn.style.opacity="0.6"}
     try{
@@ -545,11 +558,13 @@ const nexo=(function(){
         ok++;
       }
       activeProperty=null;
-      addLog(`Overbooking: +${ok} em ${fmt(o.date)} (${o.prop})`);
+      _obInFlight.delete(obKey);
+      addLog(`WRITE Overbooking: +${ok} em ${fmt(o.date)} (${o.prop})`);
       if(btn){btn.textContent="✓ Aberto à venda";btn.style.background="#8B9A00";btn.style.color="#fff";btn.style.borderColor="#8B9A00";btn.style.opacity="1"}
     }catch(e){
       activeProperty=null;
-      addLog(`Overbooking falhou: ${e.message}`);
+      _obInFlight.delete(obKey);
+      addLog(`WRITE Overbooking falhou: ${e.message}`);
       if(btn){btn.textContent="✗ "+e.message.slice(0,30);btn.style.background="#FF3B30";btn.style.color="#fff";btn.style.borderColor="#FF3B30";btn.style.opacity="1";btn.disabled=false}
     }
   }
@@ -620,7 +635,7 @@ const nexo=(function(){
     let h="";
 
     // Header
-    h+=`<div class="hdr"><div class="logo"><svg viewBox="182 170 660 660" xmlns="http://www.w3.org/2000/svg" style="width:32px;height:32px;flex-shrink:0"><defs><linearGradient id="nbg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#E7A4C2"/><stop offset="100%" stop-color="#F04FA0"/></linearGradient><clipPath id="nc"><rect x="182" y="170" width="660" height="660" rx="120"/></clipPath></defs><rect x="182" y="170" width="660" height="660" rx="120" fill="url(#nbg)"/><g clip-path="url(#nc)" fill="#000"><path d="M320 658V340h150l238 238v80h-78L412 440v218H320z"/><circle cx="640" cy="398" r="62"/></g></svg><div><h1>nexo</h1><small>${(data.generated||"").split("T")[0]||""}</small></div></div><div class="btns">`;
+    h+=`<div class="hdr"><div style="display:flex;align-items:center;gap:10px"><div class="logo"><svg viewBox="182 170 660 660" xmlns="http://www.w3.org/2000/svg" style="width:32px;height:32px;flex-shrink:0"><defs><linearGradient id="nbg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#E7A4C2"/><stop offset="100%" stop-color="#F04FA0"/></linearGradient><clipPath id="nc"><rect x="182" y="170" width="660" height="660" rx="120"/></clipPath></defs><rect x="182" y="170" width="660" height="660" rx="120" fill="url(#nbg)"/><g clip-path="url(#nc)" fill="#000"><path d="M320 658V340h150l238 238v80h-78L412 440v218H320z"/><circle cx="640" cy="398" r="62"/></g></svg><div><h1>nexo</h1><small>${(data.generated||"").split("T")[0]||""}</small></div></div><span style="background:#FF3B30;color:#fff;font-size:9px;font-weight:800;padding:2px 8px;border-radius:980px;letter-spacing:1px">PRODUÇÃO</span></div><div class="btns">`;
     ["ALL",...properties].forEach(p=>{h+=`<button class="btn${state.prop===p?" on":""}" onclick="nexo.selectProperty('${p}')">${p==="ALL"?"Todos":p}</button>`});
     h+=`<button class="btn api" onclick="nexo.fetchFromMews()" ${state.uping?'disabled':''}>Atualizar</button>`;
     h+=`<button class="btn grn" onclick="nexo.generateWeeklyReport()">Relatório</button>`;
