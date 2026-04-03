@@ -8,39 +8,39 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F5F7;color:#1D1D1F;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:#F5F5F7}::-webkit-scrollbar-thumb{background:#D2D2D7;border-radius:3px}
+body{font-family:'Soehne','Inter',system-ui,-apple-system,sans-serif;background:#F4F5F9;color:#000;overflow-x:hidden;-webkit-font-smoothing:antialiased;line-height:1.5}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:#F4F5F9}::-webkit-scrollbar-thumb{background:#D2D2D7;border-radius:3px}
 
 /* Header */
 .hdr{background:#fff;border-bottom:1px solid #E5E5EA;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .logo{display:flex;align-items:center;gap:12px}
-.logo i{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#FF3B30,#FF9500,#34C759);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:#fff;font-style:normal;box-shadow:0 2px 8px rgba(255,59,48,.25)}
-.logo h1{font-size:15px;font-weight:800;letter-spacing:-.2px;color:#1D1D1F}.logo small{font-size:10px;color:#86868B;font-weight:500;display:block;margin-top:1px}
+.logo i{width:36px;height:36px;border-radius:12px;background:#FF83DA;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:#000;font-style:normal;box-shadow:0 2px 8px rgba(255,131,218,.3)}
+.logo h1{font-size:15px;font-weight:900;letter-spacing:-.3px;color:#000;text-transform:uppercase}.logo small{font-size:10px;color:#86868B;font-weight:500;display:block;margin-top:1px}
 .btns{display:flex;gap:6px;align-items:center}
-.btn{padding:7px 14px;border-radius:8px;border:1px solid #E5E5EA;background:#fff;color:#86868B;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
-.btn:hover{border-color:#D2D2D7;color:#1D1D1F;background:#FAFAFA}
-.btn.on{border-color:#0071E3;background:#EFF6FF;color:#0071E3}
-.btn.api{border-color:#AF52DE40;color:#AF52DE;background:#AF52DE08}.btn.api:hover{background:#AF52DE14}
+.btn{padding:7px 14px;border-radius:980px;border:1px solid #E5E5EA;background:#fff;color:#000;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;text-transform:uppercase;letter-spacing:.3px}
+.btn:hover{border-color:#D2D2D7;color:#000;background:#F4F5F9}
+.btn.on{border-color:#FF83DA;background:#FFF0FB;color:#FF83DA}
+.btn.api{border-color:#FF83DA40;color:#FF83DA;background:#FF83DA08}.btn.api:hover{background:#FF83DA14}
 .btn.act{border-color:#FF3B3040;color:#FF3B30}.btn.act:hover{background:#FF3B3008}
 .btn.grn{border-color:#34C75940;color:#34C759}.btn.grn:hover{background:#34C75908}
 
 /* Status bar */
-.status-bar{padding:8px 24px;background:#FAFAFA;border-bottom:1px solid #E5E5EA;font-size:11px;color:#86868B;display:flex;align-items:center;gap:8px}
+.status-bar{padding:8px 24px;background:#F4F5F9;border-bottom:1px solid #E5E5EA;font-size:11px;color:#86868B;display:flex;align-items:center;gap:8px}
 .dot{width:7px;height:7px;border-radius:50%}
 
 /* KPIs */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:20px 24px;background:#F5F5F7}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:20px 24px;background:#F4F5F9}
 .kpi{background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.kpi label{font-size:10px;color:#86868B;font-weight:600;letter-spacing:.8px;text-transform:uppercase;display:block;margin-bottom:4px}
-.kpi b{font-size:28px;font-weight:800;line-height:1.1;display:block;letter-spacing:-.5px}.kpi small{font-size:11px;color:#AEAEB2;display:block;margin-top:2px}
+.kpi label{font-size:10px;color:#86868B;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px}
+.kpi b{font-size:28px;font-weight:900;line-height:1.1;display:block;letter-spacing:-1px}.kpi small{font-size:11px;color:#AEAEB2;display:block;margin-top:2px}
 
 /* Tabs */
 .tabs{display:flex;border-bottom:1px solid #E5E5EA;background:#fff;padding:0 24px;gap:4px}
-.tab{padding:12px 18px;background:0;border:none;border-bottom:2px solid transparent;color:#86868B;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
-.tab:hover{color:#1D1D1F}.tab.on{border-bottom-color:#0071E3;color:#0071E3}
+.tab{padding:12px 18px;background:0;border:none;border-bottom:2px solid transparent;color:#86868B;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;text-transform:uppercase;letter-spacing:.3px}
+.tab:hover{color:#000}.tab.on{border-bottom-color:#FF83DA;color:#FF83DA}
 .nav{display:flex;align-items:center;gap:6px;margin-left:auto;padding:8px 0}
-.nbtn{background:#F5F5F7;border:1px solid #E5E5EA;color:#86868B;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:10px;font-family:inherit;font-weight:600;transition:all .15s}
-.nbtn:hover{background:#E5E5EA}.nbtn.on{background:#0071E3;color:#fff;border-color:#0071E3}
+.nbtn{background:#F4F5F9;border:1px solid #E5E5EA;color:#86868B;padding:5px 10px;border-radius:980px;cursor:pointer;font-size:10px;font-family:inherit;font-weight:700;transition:all .15s;text-transform:uppercase;letter-spacing:.3px}
+.nbtn:hover{background:#E5E5EA}.nbtn.on{background:#000;color:#fff;border-color:#000}
 
 /* Layout */
 .content{display:flex;min-height:calc(100vh - 230px)}.main{flex:1;overflow:hidden}
@@ -48,7 +48,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F5F7;c
 /* Timeline */
 .tl-wrap{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 230px)}
 .tl{display:inline-flex;min-width:100%}
-.tl-lbl{flex-shrink:0;position:sticky;left:0;z-index:10;background:#F5F5F7}
+.tl-lbl{flex-shrink:0;position:sticky;left:0;z-index:10;background:#F4F5F9}
 .tl-r{display:flex;align-items:center;padding:0 8px;border-bottom:1px solid #F0F0F2;border-right:1px solid #E5E5EA;font-size:10px}
 .tl-c{border-bottom:1px solid #F0F0F2;display:flex;align-items:center;justify-content:center;transition:opacity .1s}
 .tl-c:hover{opacity:1!important}.tl-c.res{cursor:pointer}
@@ -58,40 +58,40 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F5F7;c
 /* Tables */
 .tbl{padding:20px 24px;overflow-y:auto;max-height:calc(100vh - 230px)}
 .tbl table{width:100%;background:#fff;border-radius:12px;border:1px solid #E5E5EA;border-collapse:collapse;overflow:hidden}
-.tbl th{padding:10px 12px;border-bottom:1px solid #E5E5EA;font-size:9px;font-weight:700;color:#86868B;letter-spacing:.8px;text-align:left;text-transform:uppercase;background:#FAFAFA}
-.tbl td{padding:8px 12px;border-bottom:1px solid #F0F0F2;font-size:12px;color:#1D1D1F}
-.tbl tr:hover{background:#F5F5F7}.tbl tr{cursor:pointer;transition:background .1s}
+.tbl th{padding:10px 12px;border-bottom:1px solid #E5E5EA;font-size:9px;font-weight:700;color:#86868B;letter-spacing:1px;text-align:left;text-transform:uppercase;background:#F4F5F9}
+.tbl td{padding:8px 12px;border-bottom:1px solid #F0F0F2;font-size:12px;color:#000}
+.tbl tr:hover{background:#F4F5F9}.tbl tr{cursor:pointer;transition:background .1s}
 
 /* Panel */
 .panel{width:360px;border-left:1px solid #E5E5EA;background:#fff;overflow-y:auto;max-height:calc(100vh - 230px);flex-shrink:0}
-.panel h2{font-size:16px;font-weight:700;color:#1D1D1F}.panel h3{font-size:11px;color:#86868B;font-weight:500;margin-top:2px}
+.panel h2{font-size:16px;font-weight:900;color:#000;letter-spacing:-.3px}.panel h3{font-size:11px;color:#86868B;font-weight:500;margin-top:2px}
 .panel .risk{margin:14px 16px;padding:18px;border-radius:12px}
 .panel .sc{font-size:32px;font-weight:900;letter-spacing:-1px}
 .panel .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F0F0F2;font-size:12px}
-.panel .row label{color:#86868B;font-weight:500}.panel .row span{color:#1D1D1F;font-weight:500;text-align:right;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel .row label{color:#86868B;font-weight:500}.panel .row span{color:#000;font-weight:500;text-align:right;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .panel .section-title{font-size:9px;font-weight:700;color:#86868B;letter-spacing:1px;text-transform:uppercase;padding:12px 0 6px}
 
 /* Upload */
 .up-zone{max-width:560px;margin:60px auto;padding:30px;text-align:center}
 .api-section{background:#fff;border:1px solid #E5E5EA;border-radius:16px;padding:28px;margin-bottom:24px;box-shadow:0 2px 8px rgba(0,0,0,.04)}
-.api-section h3{font-size:15px;font-weight:700;color:#1D1D1F;margin-bottom:10px;display:flex;align-items:center;gap:8px;justify-content:center}
+.api-section h3{font-size:15px;font-weight:900;color:#000;margin-bottom:10px;display:flex;align-items:center;gap:8px;justify-content:center;text-transform:uppercase;letter-spacing:-.2px}
 .api-section .msg{font-size:12px;color:#86868B;line-height:1.6;margin-bottom:16px}
-.api-btn{padding:12px 24px;background:#0071E3;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;width:100%;transition:all .15s}
-.api-btn:hover{background:#0077ED}.api-btn:disabled{opacity:.4;cursor:not-allowed}
-.api-status{font-size:11px;color:#86868B;padding:10px;background:#F5F5F7;border-radius:8px;margin-top:10px}
+.api-btn{padding:14px 24px;background:#FF83DA;color:#000;border:none;border-radius:980px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;width:100%;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.api-btn:hover{background:#FF9BE3}.api-btn:disabled{opacity:.4;cursor:not-allowed}
+.api-status{font-size:11px;color:#86868B;padding:10px;background:#F4F5F9;border-radius:8px;margin-top:10px}
 .up-box{border:2px dashed #D2D2D7;border-radius:14px;padding:24px 16px;cursor:pointer;transition:all .2s;text-align:center;background:#fff}
-.up-box:hover{border-color:#0071E3;background:#EFF6FF}.up-box.ok{border-color:#34C759;background:#34C75908}
-.up-btn{margin-top:20px;padding:14px 32px;background:#0071E3;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
-.up-btn:hover{background:#0077ED}.up-btn:disabled{opacity:.4;cursor:not-allowed}
-.msg{margin-top:12px;font-size:12px}.msg.err{color:#FF3B30}.msg.ok{color:#34C759}.msg.info{color:#0071E3}
+.up-box:hover{border-color:#FF83DA;background:#FFF0FB}.up-box.ok{border-color:#34C759;background:#34C75908}
+.up-btn{margin-top:20px;padding:14px 32px;background:#FF83DA;color:#000;border:none;border-radius:980px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.up-btn:hover{background:#FF9BE3}.up-btn:disabled{opacity:.4;cursor:not-allowed}
+.msg{margin-top:12px;font-size:12px}.msg.err{color:#FF3B30}.msg.ok{color:#34C759}.msg.info{color:#FF83DA}
 
 /* Misc */
-.prob-bar{display:inline-block;height:7px;border-radius:4px;margin-right:5px;vertical-align:middle}
-.nat-tag{display:inline-block;font-size:8px;padding:2px 5px;border-radius:4px;margin-left:4px;font-weight:700;letter-spacing:.3px}
+.prob-bar{display:inline-block;height:7px;border-radius:980px;margin-right:5px;vertical-align:middle}
+.nat-tag{display:inline-block;font-size:8px;padding:2px 5px;border-radius:980px;margin-left:4px;font-weight:700;letter-spacing:.3px}
 .ob-card{background:#fff;border:1px solid #E5E5EA;border-radius:14px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);transition:all .15s}
 .ob-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.08);transform:translateY(-1px)}
 .period-card{background:#fff;border:1px solid #E5E5EA;border-radius:14px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.action-btn{display:block;width:100%;padding:10px;margin-bottom:8px;border-radius:10px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;text-align:center;border:1px solid;transition:all .15s;text-decoration:none;box-sizing:border-box}
+.action-btn{display:block;width:100%;padding:10px;margin-bottom:8px;border-radius:980px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;text-align:center;border:1px solid;transition:all .15s;text-decoration:none;box-sizing:border-box;text-transform:uppercase;letter-spacing:.3px}
 .action-btn:hover{opacity:.85}
 </style>
 </head>
@@ -106,11 +106,11 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F5F5F7;c
 
 let SH={};
 let PS=[];
-function buildPS(reservations){PS=[...new Set(reservations.map(r=>r.prop).filter(Boolean))].sort();SH={};const used=new Set();PS.forEach(p=>{const words=p.trim().split(/\s+/);let abbr=words.length===1?p.slice(0,3).toUpperCase():words.map(w=>w[0]).join("").toUpperCase();if(used.has(abbr)){abbr=words.length===1?p.slice(0,4).toUpperCase():words.map(w=>w.slice(0,2)).join("").toUpperCase().slice(0,4);let i=2;while(used.has(abbr)){abbr=p.replace(/[^A-Za-z0-9]/g,"").slice(0,i+2).toUpperCase();i++}}used.add(abbr);SH[p]=abbr})}
+function buildPS(reservations){PS=[...new Set(reservations.map(r=>r.prop).filter(Boolean))].sort();SH={};const used=new Set();PS.forEach(p=>{const clean=p.replace(/\s*\(.*?\)\s*/g,"").trim();const words=clean.split(/\s+/).filter(w=>w.length>0);let abbr;if(words.length===0)abbr=p.replace(/[^A-Za-z0-9]/g,"").slice(0,3).toUpperCase();else if(words.length===1)abbr=words[0].slice(0,3).toUpperCase();else abbr=words.slice(0,3).map(w=>w[0]).join("").toUpperCase();if(abbr.length>4)abbr=abbr.slice(0,4);if(used.has(abbr)){let i=1;while(used.has(abbr+i))i++;abbr=abbr.slice(0,3)+i}used.add(abbr);SH[p]=abbr})}
 const fmt=d=>{if(!d)return"";const p=d.split("-");return p[2]+"/"+p[1]};
 const dn=d=>["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(d+"T12:00:00").getDay()];
 const rc=l=>l==="HIGH"?"#FF3B30":l==="MEDIUM"?"#FF9500":"#34C759";
-const oc=o=>o==="NR+Paid"?"#007AFF":o&&o.includes("Safe")?"#34C759":null;
+const oc=o=>o==="NR+Paid"?"#000":o&&o.includes("Safe")?"#34C759":null;
 const cb=r=>oc(r.override)||rc(r.level);
 const today=new Date().toISOString().split("T")[0];
 
@@ -126,7 +126,7 @@ function cancelProb(score){
   const p=95/(1+Math.exp(-0.08*(score-35)));
   return Math.max(3,Math.min(95,Math.round(p)));
 }
-function probColor(p){return p>=70?"#FF3B30":p>=40?"#FF9500":p>=15?"#007AFF":"#34C759"}
+function probColor(p){return p>=70?"#FF3B30":p>=40?"#FF9500":p>=15?"#000":"#34C759"}
 
 // ─── SCORING MODEL (27 signals) ───
 function isNR(r){const l=(r||"").toLowerCase();return l.includes("nr ")||l.startsWith("nr")||l.includes("non-ref")||l.includes("non-refundable")||l.includes("early bird")}
@@ -252,6 +252,8 @@ async function processMewsFiles(){
     const nt=natTier(r.nationality);const riskRev=Math.round(r.total*prob/100);
     return{...r,score,level,override,prob,factors,riskRev,natTier:nt,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)};
   });
+  // Build PS before overbooking so it uses dynamic property list
+  buildPS(scored);
   // Overbooking computation
   const ob=[];const dnArr=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];const cutoff=new Date(Date.now()+90*864e5).toISOString().split("T")[0];
   const dayOcc={};scored.forEach(r=>{let d=new Date(r.arrival+"T12:00:00");const dep=new Date(r.departure+"T12:00:00");while(d<dep){const ds=d.toISOString().split("T")[0];const key=r.prop+"|"+ds;if(!dayOcc[key])dayOcc[key]={total:0,high:[],adrs:[]};dayOcc[key].total++;if(r.adr>0)dayOcc[key].adrs.push(r.adr);if(r.level==="HIGH")dayOcc[key].high.push(r);d.setDate(d.getDate()+1)}});
@@ -259,7 +261,7 @@ async function processMewsFiles(){
   ob.sort((a,b)=>a.date.localeCompare(b.date));
   const obMap={};ob.forEach(o=>{const key=o.prop+"|"+o.date;const hiOnDay=scored.filter(r=>r.prop===o.prop&&r.level==="HIGH"&&r.arrival<=o.date&&r.departure>o.date);const hiRoomIds=hiOnDay.map(r=>r.room);obMap[key]={ob:o.ob,rooms:o.rooms,rate:o.avgRate,hiRooms:hiRoomIds,hiGuests:hiOnDay.slice(0,3).map(r=>r.guest.split(" ").pop())}});
   D={reservations:scored,availability:results.avail,overbooking:ob,obMap,log:D.log.concat(results.logs),generated:new Date().toISOString(),calibratedWeights:D.calibratedWeights,weatherCache:D.weatherCache};
-  buildPS(scored);st.phase="dashboard";st.uping=false;st.umsg="";pendingFiles=[];render();
+  st.phase="dashboard";st.uping=false;st.umsg="";pendingFiles=[];render();
 }
 
 // ─── STATE ───
@@ -279,10 +281,10 @@ async function processFiles(){
   const guestBookCnt={};results.res.forEach(r=>{const gid=r.email||r.guest;if(gid)guestBookCnt[gid]=(guestBookCnt[gid]||0)+1});
   results.res.forEach(r=>{r.propAvgAdr=propAvgAdrs[r.prop]||0;const gid=r.email||r.guest;r.guestActiveBookings=guestBookCnt[gid]||1});
   const scored=results.res.map(r=>{const{score,level,override,prob}=computeRisk(r);const factors=[];if(r.previousCancels>0)factors.push("Cancelou antes");if(r.previousStays>0)factors.push("Repetente");if(!r.hasCreditCard&&r.paymentStatus!=="charged")factors.push("Sem cartão");if(r.hasOtaEmail)factors.push("Email OTA");if(r.hasTravelAgency)factors.push("Agência");if(r.hasChildren)factors.push("Família");if(r.wasModified)factors.push("Modificada");if(sRate(r.rate)>=35)factors.push("Rate flexível");if(sChan(r.source)>=35)factors.push("Canal arriscado");if(r.leadTimeDays>30)factors.push("Antecedência "+r.leadTimeDays+"d");if(r.nights>7)factors.push("Estadia longa");if(sPay(r.payment)>=30)factors.push("Sem pagamento");if(r.bookingHour!==null&&(r.bookingHour>=22||r.bookingHour<=5))factors.push("Reserva noturna");if(r.guestActiveBookings>=2)factors.push("Multi-reserva");if(r.weatherCode&&r.weatherCode>=500)factors.push("Mau tempo");const nt=natTier(r.nationality);const riskRev=Math.round(r.total*prob/100);return{...r,score,level,override,prob,factors,riskRev,natTier:nt,template:tmpl(level,r.daysUntil,r.nights),offer:offer(level,r.daysUntil,r.nights),channel:chan(r.source,level)}});
-  const ob=[];const dnArr=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];const cutoff=new Date(Date.now()+90*864e5).toISOString().split("T")[0];const dayOcc={};scored.forEach(r=>{let d=new Date(r.arrival+"T12:00:00");const dep=new Date(r.departure+"T12:00:00");while(d<dep){const ds=d.toISOString().split("T")[0];const key=r.prop+"|"+ds;if(!dayOcc[key])dayOcc[key]={total:0,high:[],adrs:[]};dayOcc[key].total++;if(r.adr>0)dayOcc[key].adrs.push(r.adr);if(r.level==="HIGH")dayOcc[key].high.push(r);d.setDate(d.getDate()+1)}});
+  buildPS(scored);const ob=[];const dnArr=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];const cutoff=new Date(Date.now()+90*864e5).toISOString().split("T")[0];const dayOcc={};scored.forEach(r=>{let d=new Date(r.arrival+"T12:00:00");const dep=new Date(r.departure+"T12:00:00");while(d<dep){const ds=d.toISOString().split("T")[0];const key=r.prop+"|"+ds;if(!dayOcc[key])dayOcc[key]={total:0,high:[],adrs:[]};dayOcc[key].total++;if(r.adr>0)dayOcc[key].adrs.push(r.adr);if(r.level==="HIGH")dayOcc[key].high.push(r);d.setDate(d.getDate()+1)}});
   PS.forEach(prop=>{const avail=results.avail[prop]||{};const allDays=new Set([...Object.keys(avail),...Object.keys(dayOcc).filter(k=>k.startsWith(prop+"|")).map(k=>k.split("|")[1])]);allDays.forEach(ds=>{if(ds<today||ds>cutoff)return;const key=prop+"|"+ds;const dd=dayOcc[key]||{total:0,high:[],adrs:[]};const av=avail[ds];const hi=dd.high;if(hi.length<2)return;let occPct=0;let capacity=0;if(av&&av.spaces>0){occPct=av.occPct||0;capacity=av.spaces}const resvOccPct=dd.total>0&&capacity>0?Math.round(dd.total/capacity*1000)/10:0;if(resvOccPct>occPct)occPct=resvOccPct;const avgRate=dd.adrs.length>0?Math.round(dd.adrs.reduce((s,v)=>s+v,0)/dd.adrs.length):(av?.avgRate||100);if((occPct>=70&&hi.length>=2)||hi.length>=3){const n=Math.min(Math.max(1,Math.floor(hi.length*.4)),3);const adj=Math.max(1,n-(hi.some(r=>r.daysUntil>7)?1:0));const hiGuests=hi.sort((a,b)=>b.score-a.score).slice(0,5).map(r=>r.guest.split(" ").pop());const fr=av?(av.rooms||[]).filter(rt=>rt.avail===0&&rt.rate>0):[];const avgProb=hi.length>0?hi.reduce((s,r)=>s+(r.prob||0),0)/hi.length/100:0;const combinedProb=Math.min(0.95,1-Math.pow(1-avgProb,adj));const walkCost=avgRate*2.5;const extraRev=avgRate*adj;const ev=Math.round(combinedProb*extraRev-(1-combinedProb)*walkCost);ob.push({date:ds,prop,occPct,nHigh:hi.length,ob:adj,rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate})),roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")).join(", ")||"Qualquer tipo",avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],hiGuests:hiGuests.join(", "),week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"}),ev,combinedProb:Math.round(combinedProb*100),walkCost:Math.round(walkCost)})}})});ob.sort((a,b)=>a.date.localeCompare(b.date));
   const obMap={};ob.forEach(o=>{const key=o.prop+"|"+o.date;const hiOnDay=scored.filter(r=>r.prop===o.prop&&r.level==="HIGH"&&r.arrival<=o.date&&r.departure>o.date);const hiRoomIds=hiOnDay.map(r=>r.room);obMap[key]={ob:o.ob,rooms:o.rooms,rate:o.avgRate,hiRooms:hiRoomIds,hiGuests:hiOnDay.slice(0,3).map(r=>r.guest.split(" ").pop())}});
-  D={reservations:scored,availability:results.avail,overbooking:ob,obMap,log:results.logs,generated:new Date().toISOString(),calibratedWeights:D.calibratedWeights,weatherCache:D.weatherCache};buildPS(scored);st.phase="dashboard";st.uping=false;st.umsg="";pendingFiles=[];render();
+  D={reservations:scored,availability:results.avail,overbooking:ob,obMap,log:results.logs,generated:new Date().toISOString(),calibratedWeights:D.calibratedWeights,weatherCache:D.weatherCache};st.phase="dashboard";st.uping=false;st.umsg="";pendingFiles=[];render();
 }
 async function addFiles(type,e){const files=Array.from(e.target.files);for(const f of files){try{const buf=await f.arrayBuffer();pendingFiles.push({buf,name:f.name,type})}catch(err){console.error("Read error:",f.name,err)}}render()}
 
@@ -292,7 +294,7 @@ async function addShieldTask(resvId,guestName,score,prob,arrival,ofr){try{const 
 async function bulkAddNotes(){if(!confirm("Adicionar nota em todas as "+D.reservations.filter(r=>r.level==="HIGH").length+" reservas de alto risco?"))return;st.uping=true;st.umsg="Adicionando notas...";render();const hi=D.reservations.filter(r=>r.level==="HIGH");let ok=0,fail=0;for(const r of hi){const success=await addShieldNote(r.id,r.guest,r.score,r.prob,r.level,r.factors||[]);if(success)ok++;else fail++;st.umsg=`Notas: ${ok+fail}/${hi.length}...`;render()}st.uping=false;st.umsg=`${ok} notas adicionadas${fail?", "+fail+" falharam":""}`;render()}
 async function bulkAddTasks(){const hi=D.reservations.filter(r=>r.level==="HIGH"&&r.daysUntil>0&&r.daysUntil<=14);if(!confirm("Criar task para "+hi.length+" reservas de alto risco nos próximos 14 dias?"))return;st.uping=true;st.umsg="Criando tasks...";render();let ok=0,fail=0;for(const r of hi){const success=await addShieldTask(r.id,r.guest,r.score,r.prob,r.arrival,r.offer||"Oferecer upgrade");if(success)ok++;else fail++;st.umsg=`Tasks: ${ok+fail}/${hi.length}...`;render()}st.uping=false;st.umsg=`${ok} tasks criadas${fail?", "+fail+" falharam":""}`;render()}
 
-function generateWeeklyReport(){if(!D.reservations.length){alert("Carregue dados primeiro.");return}const hi=D.reservations.filter(r=>r.level==="HIGH");const med=D.reservations.filter(r=>r.level==="MEDIUM");const lo=D.reservations.filter(r=>r.level==="LOW");const riskRev=D.reservations.reduce((s,r)=>s+(r.riskRev||0),0);const dt=new Date().toLocaleDateString("pt");const hiNext7=D.reservations.filter(r=>r.level==="HIGH"&&r.daysUntil>0&&r.daysUntil<=7);const byProp={};D.reservations.forEach(r=>{if(!byProp[r.prop])byProp[r.prop]={total:0,high:0,rev:0,risk:0};byProp[r.prop].total++;if(r.level==="HIGH")byProp[r.prop].high++;byProp[r.prop].rev+=r.total;byProp[r.prop].risk+=(r.riskRev||0)});const reportHtml=`<!DOCTYPE html><html><head><title>Shield Report - ${dt}</title><style>body{font-family:Inter,system-ui,sans-serif;max-width:800px;margin:0 auto;padding:30px;color:#1D1D1F}h1{color:#1D1D1F;border-bottom:3px solid #FF3B30;padding-bottom:10px}h2{color:#86868B;margin-top:30px}table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}th{background:#1D1D1F;color:white;padding:10px;text-align:left;border-radius:0}td{padding:8px 10px;border-bottom:1px solid #E5E5EA}.badge{display:inline-block;padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600}.badge.h{background:#FF3B3018;color:#FF3B30}.badge.m{background:#FF950018;color:#FF9500}.badge.l{background:#34C75918;color:#34C759}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}.kpi-card{background:#F5F5F7;border-radius:12px;padding:18px;text-align:center}.kpi-card .num{font-size:28px;font-weight:800}.kpi-card .lbl{font-size:11px;color:#86868B;margin-top:4px}</style></head><body><h1>Cancellation Shield — Relatório</h1><p style="color:#86868B">${new Date().toLocaleString("pt")} | ${D.reservations.length} reservas</p><div class="kpi-grid"><div class="kpi-card" style="border-left:4px solid #FF3B30"><div class="num">${hi.length}</div><div class="lbl">Alto Risco</div></div><div class="kpi-card" style="border-left:4px solid #FF9500"><div class="num">${med.length}</div><div class="lbl">Médio Risco</div></div><div class="kpi-card" style="border-left:4px solid #34C759"><div class="num">${lo.length}</div><div class="lbl">Baixo Risco</div></div><div class="kpi-card"><div class="num" style="color:#FF3B30">€${Math.round(riskRev/1000)}K</div><div class="lbl">Receita em Risco</div></div></div><h2>Alertas Urgentes (7 dias)</h2>${hiNext7.length===0?'<p style="color:#34C759">Nenhuma reserva de alto risco nos próximos 7 dias.</p>':`<table><tr><th>Hóspede</th><th>Prop</th><th>Chegada</th><th>Prob</th><th>Total</th></tr>${hiNext7.sort((a,b)=>a.daysUntil-b.daysUntil).map(r=>`<tr><td>${r.guest}</td><td>${r.prop}</td><td>${fmt(r.arrival)} (${r.daysUntil}d)</td><td><span class="badge h">${r.prob}%</span></td><td>€${r.total}</td></tr>`).join("")}</table>`}<h2>Overbooking</h2><p>${D.overbooking.length} dias com oportunidade | €${Math.round(D.overbooking.reduce((s,o)=>s+o.ob*o.avgRate,0)/1000)}K potencial</p><div style="margin-top:40px;text-align:center;color:#AEAEB2;font-size:10px">Cancellation Shield v13.0</div></body></html>`;const w=window.open('','_blank');if(w){w.document.write(reportHtml);w.document.close();setTimeout(()=>w.print(),500)}else{const blob=new Blob([reportHtml],{type:'text/html'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Shield-Report-'+dt.replace(/\//g,'-')+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}}
+function generateWeeklyReport(){if(!D.reservations.length){alert("Carregue dados primeiro.");return}const hi=D.reservations.filter(r=>r.level==="HIGH");const med=D.reservations.filter(r=>r.level==="MEDIUM");const lo=D.reservations.filter(r=>r.level==="LOW");const riskRev=D.reservations.reduce((s,r)=>s+(r.riskRev||0),0);const dt=new Date().toLocaleDateString("pt");const hiNext7=D.reservations.filter(r=>r.level==="HIGH"&&r.daysUntil>0&&r.daysUntil<=7);const byProp={};D.reservations.forEach(r=>{if(!byProp[r.prop])byProp[r.prop]={total:0,high:0,rev:0,risk:0};byProp[r.prop].total++;if(r.level==="HIGH")byProp[r.prop].high++;byProp[r.prop].rev+=r.total;byProp[r.prop].risk+=(r.riskRev||0)});const reportHtml=`<!DOCTYPE html><html><head><title>Shield Report - ${dt}</title><style>body{font-family:'Soehne','Inter',system-ui,sans-serif;max-width:800px;margin:0 auto;padding:30px;color:#000}h1{color:#000;border-bottom:3px solid #FF83DA;padding-bottom:10px}h2{color:#86868B;margin-top:30px}table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}th{background:#000;color:white;padding:10px;text-align:left;border-radius:0}td{padding:8px 10px;border-bottom:1px solid #E5E5EA}.badge{display:inline-block;padding:3px 10px;border-radius:980px;font-size:11px;font-weight:600}.badge.h{background:#FF3B3018;color:#FF3B30}.badge.m{background:#FF950018;color:#FF9500}.badge.l{background:#34C75918;color:#34C759}.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}.kpi-card{background:#F4F5F9;border-radius:12px;padding:18px;text-align:center}.kpi-card .num{font-size:28px;font-weight:800}.kpi-card .lbl{font-size:11px;color:#86868B;margin-top:4px}</style></head><body><h1>Cancellation Shield — Relatório</h1><p style="color:#86868B">${new Date().toLocaleString("pt")} | ${D.reservations.length} reservas</p><div class="kpi-grid"><div class="kpi-card" style="border-left:4px solid #FF3B30"><div class="num">${hi.length}</div><div class="lbl">Alto Risco</div></div><div class="kpi-card" style="border-left:4px solid #FF9500"><div class="num">${med.length}</div><div class="lbl">Médio Risco</div></div><div class="kpi-card" style="border-left:4px solid #34C759"><div class="num">${lo.length}</div><div class="lbl">Baixo Risco</div></div><div class="kpi-card"><div class="num" style="color:#FF3B30">€${Math.round(riskRev/1000)}K</div><div class="lbl">Receita em Risco</div></div></div><h2>Alertas Urgentes (7 dias)</h2>${hiNext7.length===0?'<p style="color:#34C759">Nenhuma reserva de alto risco nos próximos 7 dias.</p>':`<table><tr><th>Hóspede</th><th>Prop</th><th>Chegada</th><th>Prob</th><th>Total</th></tr>${hiNext7.sort((a,b)=>a.daysUntil-b.daysUntil).map(r=>`<tr><td>${r.guest}</td><td>${r.prop}</td><td>${fmt(r.arrival)} (${r.daysUntil}d)</td><td><span class="badge h">${r.prob}%</span></td><td>€${r.total}</td></tr>`).join("")}</table>`}<h2>Overbooking</h2><p>${D.overbooking.length} dias com oportunidade | €${Math.round(D.overbooking.reduce((s,o)=>s+o.ob*o.avgRate,0)/1000)}K potencial</p><div style="margin-top:40px;text-align:center;color:#AEAEB2;font-size:10px">Cancellation Shield v13.0</div></body></html>`;const w=window.open('','_blank');if(w){w.document.write(reportHtml);w.document.close();setTimeout(()=>w.print(),500)}else{const blob=new Blob([reportHtml],{type:'text/html'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Shield-Report-'+dt.replace(/\//g,'-')+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}}
 
 // ─── HELPERS ───
 function gf(){return st.prop==="ALL"?D.reservations:D.reservations.filter(x=>x.prop===st.prop)}
@@ -326,10 +328,10 @@ function render(){
 
   // ─── KPIs (4 only) ───
   h+=`<div class="kpis">`;
-  h+=`<div class="kpi"><label>Reservas</label><b style="color:#1D1D1F">${res.length}</b><small>${hi.length+me.length} em risco</small></div>`;
+  h+=`<div class="kpi"><label>Reservas</label><b style="color:#000">${res.length}</b><small>${hi.length+me.length} em risco</small></div>`;
   h+=`<div class="kpi"><label>Alto Risco</label><b style="color:#FF3B30">${hi.length}</b><small>${me.length} médio</small></div>`;
   h+=`<div class="kpi"><label>Receita em Risco</label><b style="color:#FF3B30">€${Math.round(totalRiskRev/1000)}K</b><small>prob. ponderado</small></div>`;
-  h+=`<div class="kpi"><label>Overbooking</label><b style="color:#AF52DE">€${Math.round(obRev/1000)}K</b><small>${ob.length} dias · +${ob.reduce((s,o)=>s+o.ob,0)} quartos</small></div>`;
+  h+=`<div class="kpi"><label>Overbooking</label><b style="color:#8B9A00">€${Math.round(obRev/1000)}K</b><small>${ob.length} dias · +${ob.reduce((s,o)=>s+o.ob,0)} quartos</small></div>`;
   h+=`</div>`;
 
   // ─── TABS ───
@@ -342,54 +344,54 @@ function render(){
   // ─── TIMELINE TAB ───
   if(st.tab==="timeline"){
     h+=`<div class="tl-wrap"><div class="tl"><div class="tl-lbl" style="width:${lW}px"><div style="height:30px;background:#fff;border-bottom:1px solid #E5E5EA;border-right:1px solid #E5E5EA"></div>`;
-    rows.forEach((row,i)=>{h+=`<div class="tl-r" style="height:${rH}px;background:${i%2===0?"#FAFAFA":"#fff"}"><span style="color:#AEAEB2;width:36px;font-size:9px;font-weight:600">${SH[row.prop]||""}</span><span style="color:#1D1D1F;font-weight:600;font-size:11px">${row.room}</span></div>`});
+    rows.forEach((row,i)=>{h+=`<div class="tl-r" style="height:${rH}px;background:${i%2===0?"#F4F5F9":"#fff"}"><span style="color:#AEAEB2;width:36px;font-size:9px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">${PS.length>1?(SH[row.prop]||""):""}</span><span style="color:#000;font-weight:600;font-size:11px">${row.room}</span></div>`});
     h+=`</div><div style="display:flex">`;
     days.forEach(day=>{const iT=day===today,iW=[0,6].includes(new Date(day+"T12:00:00").getDay());
-      h+=`<div style="width:${cW}px;flex-shrink:0"><div style="height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${iT?"#0071E3":"#fff"};border-bottom:1px solid #E5E5EA"><span style="font-size:8px;color:${iT?"#fff":iW?"#AEAEB2":"#86868B"};font-weight:600">${dn(day)}</span><span style="font-size:${cW>=38?11:9}px;color:${iT?"#fff":"#1D1D1F"};font-weight:700">${new Date(day+"T12:00:00").getDate()}</span></div>`;
+      h+=`<div style="width:${cW}px;flex-shrink:0"><div style="height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${iT?"#FF83DA":"#fff"};border-bottom:1px solid #E5E5EA"><span style="font-size:8px;color:${iT?"#fff":iW?"#AEAEB2":"#86868B"};font-weight:600">${dn(day)}</span><span style="font-size:${cW>=38?11:9}px;color:${iT?"#fff":"#000"};font-weight:700">${new Date(day+"T12:00:00").getDate()}</span></div>`;
       rows.forEach(row=>{const r=row.res.find(x=>x.arrival<=day&&x.departure>day);
         const obKey=row.prop+"|"+day;const obDay=D.obMap[obKey];
         if(!r){
-          if(obDay&&obDay.rooms.length>0){const rowCat=(row.res[0]&&row.res[0].roomType)||"";const matchesOB=obDay.rooms.some(rt=>rowCat.includes(rt.type.split(" - ").pop().trim().split(" ")[0]));if(matchesOB){h+=`<div class="tl-c" style="height:${rH}px;background:#AF52DE14;border:1px dashed #AF52DE50;border-radius:3px;cursor:pointer" title="Abrir à venda" onclick="stab('overbooking')"><span style="font-size:8px;color:#AF52DE;font-weight:800">+1</span></div>`;return}}
-          h+=`<div class="tl-c" style="height:${rH}px;background:${iW?"#F0F0F2":"#FAFAFA"}"></div>`;return}
+          if(obDay&&obDay.rooms.length>0){const rowCat=(row.res[0]&&row.res[0].roomType)||"";const matchesOB=obDay.rooms.some(rt=>rowCat.includes(rt.type.split(" - ").pop().trim().split(" ")[0]));if(matchesOB){h+=`<div class="tl-c" style="height:${rH}px;background:#E8FF5B18;border:1px dashed #E8FF5B60;border-radius:3px;cursor:pointer" title="Abrir à venda" onclick="stab('overbooking')"><span style="font-size:8px;color:#8B9A00;font-weight:800">+1</span></div>`;return}}
+          h+=`<div class="tl-c" style="height:${rH}px;background:${iW?"#F0F0F2":"#F4F5F9"}"></div>`;return}
         const isA=r.arrival===day,bg=cb(r);
         const isObTarget=obDay&&r.level==="HIGH"&&obDay.hiRooms.includes(row.room);
-        const obStyle=isObTarget?"box-shadow:inset 0 0 0 2px #AF52DE;":"";
+        const obStyle=isObTarget?"box-shadow:inset 0 0 0 2px #E8FF5B;":"";
         h+=`<div class="tl-c res" style="height:${rH}px;background:${bg};opacity:${isA?1:.65};${isA?"border-radius:4px 0 0 4px;":""}${obStyle}" onclick="sel('${r.id}')" title="${r.guest} — ${r.prob}%">${isA&&cW>=30?`<span style="font-size:8px;color:#fff;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.3);padding:0 2px;overflow:hidden;white-space:nowrap">${(r.guest.split(" ").pop()||"").slice(0,5)}</span>`:""}</div>`});
       h+=`</div>`});
-    h+=`</div></div><div class="legend"><span><i style="background:#FF3B30"></i>Alto risco</span><span><i style="background:#FF9500"></i>Médio</span><span><i style="background:#34C759"></i>Baixo</span><span><i style="background:#007AFF"></i>NR+Pago</span><span><i style="background:#AF52DE;border:1px dashed #AF52DE80"></i>Overbooking</span></div></div>`}
+    h+=`</div></div><div class="legend"><span><i style="background:#FF3B30"></i>Alto risco</span><span><i style="background:#FF9500"></i>Médio</span><span><i style="background:#34C759"></i>Baixo</span><span><i style="background:#000"></i>NR+Pago</span><span><i style="background:#E8FF5B;border:1px dashed #8B9A00"></i>Overbooking</span></div></div>`}
 
   // ─── OVERBOOKING TAB (Cards) ───
   if(st.tab==="overbooking"){
     h+=`<div class="tbl">`;
-    if(!ob.length){h+=`<div style="padding:60px;text-align:center"><div style="font-size:40px;margin-bottom:12px">✓</div><div style="font-size:16px;font-weight:700;color:#1D1D1F;margin-bottom:6px">Sem oportunidades de overbooking</div><div style="font-size:13px;color:#86868B">Neste momento não há dias com reservas de alto risco suficientes.</div></div>`}
+    if(!ob.length){h+=`<div style="padding:60px;text-align:center"><div style="font-size:40px;margin-bottom:12px">✓</div><div style="font-size:16px;font-weight:700;color:#000;margin-bottom:6px">Sem oportunidades de overbooking</div><div style="font-size:13px;color:#86868B">Neste momento não há dias com reservas de alto risco suficientes.</div></div>`}
     else{
       // Summary cards per property
       const obByProp={};ob.forEach(o=>{if(!obByProp[o.prop])obByProp[o.prop]={nights:0,rev:0};obByProp[o.prop].nights+=o.ob;obByProp[o.prop].rev+=o.ob*o.avgRate});
       h+=`<div style="display:grid;grid-template-columns:repeat(${Math.min(PS.length,4)},1fr);gap:12px;margin-bottom:20px">`;
-      PS.forEach(p=>{const d=obByProp[p]||{nights:0,rev:0};h+=`<div style="background:#fff;border:1px solid ${d.nights>0?"#AF52DE30":"#E5E5EA"};border-radius:14px;padding:16px;text-align:center"><div style="font-size:10px;color:#86868B;font-weight:600;letter-spacing:.5px">${p}</div><div style="font-size:28px;font-weight:800;color:${d.nights>0?"#AF52DE":"#D2D2D7"};margin:4px 0">+${d.nights}</div><div style="font-size:11px;color:#86868B">€${Math.round(d.rev).toLocaleString()} potencial</div></div>`});
+      PS.forEach(p=>{const d=obByProp[p]||{nights:0,rev:0};h+=`<div style="background:#fff;border:1px solid ${d.nights>0?"#E8FF5B60":"#E5E5EA"};border-radius:14px;padding:16px;text-align:center"><div style="font-size:10px;color:#86868B;font-weight:600;letter-spacing:.5px">${p}</div><div style="font-size:28px;font-weight:800;color:${d.nights>0?"#8B9A00":"#D2D2D7"};margin:4px 0">+${d.nights}</div><div style="font-size:11px;color:#86868B">€${Math.round(d.rev).toLocaleString()} potencial</div></div>`});
       h+=`</div>`;
 
       // OB Cards
       h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">`;
       ob.forEach(o=>{
-        const confColor=o.combinedProb>=70?"#FF3B30":o.combinedProb>=50?"#FF9500":"#007AFF";
-        h+=`<div class="ob-card"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px"><div><div style="font-size:18px;font-weight:800;color:#1D1D1F">${fmt(o.date)}</div><div style="font-size:12px;color:#86868B;margin-top:2px">${o.dow} · ${o.prop}</div></div><div style="text-align:right"><div style="font-size:24px;font-weight:900;color:#AF52DE">+${o.ob}</div><div style="font-size:10px;color:#86868B">quarto${o.ob>1?"s":""}</div></div></div>`;
-        h+=`<div style="display:flex;gap:10px;margin-bottom:12px"><div style="flex:1;background:#F5F5F7;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-size:9px;color:#86868B;font-weight:600">CONFIANÇA</div><div style="font-size:16px;font-weight:800;color:${confColor}">${o.combinedProb}%</div></div><div style="flex:1;background:#F5F5F7;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-size:9px;color:#86868B;font-weight:600">RECEITA</div><div style="font-size:16px;font-weight:800;color:#34C759">€${o.avgRate*o.ob}</div></div></div>`;
-        h+=`<div style="font-size:11px;color:#86868B"><span style="font-weight:600;color:#1D1D1F">${o.roomsStr}</span></div>`;
+        const confColor=o.combinedProb>=70?"#FF3B30":o.combinedProb>=50?"#FF9500":"#000";
+        h+=`<div class="ob-card"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px"><div><div style="font-size:18px;font-weight:800;color:#000">${fmt(o.date)}</div><div style="font-size:12px;color:#86868B;margin-top:2px">${o.dow} · ${o.prop}</div></div><div style="text-align:right"><div style="font-size:24px;font-weight:900;color:#8B9A00">+${o.ob}</div><div style="font-size:10px;color:#86868B">quarto${o.ob>1?"s":""}</div></div></div>`;
+        h+=`<div style="display:flex;gap:10px;margin-bottom:12px"><div style="flex:1;background:#F4F5F9;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-size:9px;color:#86868B;font-weight:600">CONFIANÇA</div><div style="font-size:16px;font-weight:800;color:${confColor}">${o.combinedProb}%</div></div><div style="flex:1;background:#F4F5F9;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-size:9px;color:#86868B;font-weight:600">RECEITA</div><div style="font-size:16px;font-weight:800;color:#34C759">€${o.avgRate*o.ob}</div></div></div>`;
+        h+=`<div style="font-size:11px;color:#86868B"><span style="font-weight:600;color:#000">${o.roomsStr}</span></div>`;
         h+=`</div>`;
       });
       h+=`</div>`;
       const totalEV=ob.reduce((s,o)=>s+o.ev,0);
-      h+=`<div style="margin-top:16px;padding:14px;background:#fff;border-radius:12px;border:1px solid #E5E5EA;display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#86868B">${ob.length} dias · ${ob.reduce((s,o)=>s+o.ob,0)} quartos extra</span><span style="font-size:16px;font-weight:800;color:#AF52DE">€${Math.round(obRev).toLocaleString()} receita potencial</span></div>`}
+      h+=`<div style="margin-top:16px;padding:14px;background:#fff;border-radius:12px;border:1px solid #E5E5EA;display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#86868B">${ob.length} dias · ${ob.reduce((s,o)=>s+o.ob,0)} quartos extra</span><span style="font-size:16px;font-weight:800;color:#8B9A00">€${Math.round(obRev).toLocaleString()} receita potencial</span></div>`}
     h+=`</div>`}
 
   // ─── RETENTION/AÇÕES TAB ───
   if(st.tab==="retention"){
     h+=`<div class="tbl">`;
-    h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-size:14px;font-weight:700;color:#1D1D1F">${ret.length} reservas para contactar</div><div style="display:flex;gap:6px"><button class="btn act" onclick="bulkAddNotes()" ${st.uping?'disabled':''} style="font-size:10px;padding:5px 10px">Notas Mews</button><button class="btn" onclick="bulkAddTasks()" ${st.uping?'disabled':''} style="font-size:10px;padding:5px 10px;border-color:#FF950040;color:#FF9500">Tasks Mews</button></div></div>`;
+    h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-size:14px;font-weight:700;color:#000">${ret.length} reservas para contactar</div><div style="display:flex;gap:6px"><button class="btn act" onclick="bulkAddNotes()" ${st.uping?'disabled':''} style="font-size:10px;padding:5px 10px">Notas Mews</button><button class="btn" onclick="bulkAddTasks()" ${st.uping?'disabled':''} style="font-size:10px;padding:5px 10px;border-color:#FF950040;color:#FF9500">Tasks Mews</button></div></div>`;
     h+=`<table><tr><th>#</th><th>Confiança</th><th>Hóspede</th><th>Chegada</th><th>Dias</th><th>€ em Risco</th><th>Ação</th></tr>`;
     ret.forEach((r,i)=>{const pc=probColor(r.prob);const wl=r.phone?waLink(r.phone,waMsg(r.level,r.guest,r.prop,r.arrival,r.nights,r.offer)):"";
-    h+=`<tr onclick="sel('${r.id}')"><td style="color:#AEAEB2">${i+1}</td><td><span class="prob-bar" style="width:${Math.max(6,r.prob*.5)}px;background:${pc}"></span><span style="font-weight:700;color:${pc}">${r.prob}%</span></td><td style="color:#1D1D1F;font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.guest}</td><td style="color:#86868B">${fmt(r.arrival)}</td><td style="color:${r.daysUntil<=7?"#FF3B30":"#86868B"};font-weight:${r.daysUntil<=7?700:400}">${r.daysUntil}d</td><td style="color:#FF3B30;font-weight:700">€${r.riskRev||0}</td><td>${wl?`<a href="${wl}" target="_blank" onclick="event.stopPropagation()" style="background:#34C759;color:#fff;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;text-decoration:none">WhatsApp</a>`:`<span style="color:#AEAEB2;font-size:10px">sem tel.</span>`}</td></tr>`});
+    h+=`<tr onclick="sel('${r.id}')"><td style="color:#AEAEB2">${i+1}</td><td><span class="prob-bar" style="width:${Math.max(6,r.prob*.5)}px;background:${pc}"></span><span style="font-weight:700;color:${pc}">${r.prob}%</span></td><td style="color:#000;font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.guest}</td><td style="color:#86868B">${fmt(r.arrival)}</td><td style="color:${r.daysUntil<=7?"#FF3B30":"#86868B"};font-weight:${r.daysUntil<=7?700:400}">${r.daysUntil}d</td><td style="color:#FF3B30;font-weight:700">€${r.riskRev||0}</td><td>${wl?`<a href="${wl}" target="_blank" onclick="event.stopPropagation()" style="background:#34C759;color:#fff;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;text-decoration:none">WhatsApp</a>`:`<span style="color:#AEAEB2;font-size:10px">sem tel.</span>`}</td></tr>`});
     h+=`</table></div>`}
 
   // ─── PERÍODOS TAB (Simplified) ───
@@ -397,13 +399,13 @@ function render(){
     h+=`<div class="tbl">`;
     const byMo={};D.reservations.forEach(r=>{const mo=r.arrival?r.arrival.slice(0,7):"?";if(!byMo[mo])byMo[mo]={total:0,hi:0,me:0,lo:0,rev:0,riskRev:0};byMo[mo].total++;if(r.level==="HIGH")byMo[mo].hi++;else if(r.level==="MEDIUM")byMo[mo].me++;else byMo[mo].lo++;byMo[mo].rev+=r.total||0;byMo[mo].riskRev+=r.riskRev||0});
     const months=Object.entries(byMo).sort((a,b)=>a[0].localeCompare(b[0]));
-    h+=`<div style="font-size:14px;font-weight:700;color:#1D1D1F;margin-bottom:16px">Visão por Mês</div>`;
+    h+=`<div style="font-size:14px;font-weight:700;color:#000;margin-bottom:16px">Visão por Mês</div>`;
     h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">`;
     months.forEach(([mo,d])=>{
       const hiPct=d.total>0?Math.round(d.hi/d.total*100):0;
       const riskLevel=hiPct>=30?"#FF3B30":hiPct>=15?"#FF9500":"#34C759";
       const monthName=new Date(mo+"-15").toLocaleString("pt",{month:"long",year:"numeric"});
-      h+=`<div class="period-card"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px"><div style="font-size:13px;font-weight:700;color:#1D1D1F;text-transform:capitalize">${monthName}</div><div style="font-size:11px;font-weight:700;color:${riskLevel}">${hiPct}% risco</div></div>`;
+      h+=`<div class="period-card"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px"><div style="font-size:13px;font-weight:700;color:#000;text-transform:capitalize">${monthName}</div><div style="font-size:11px;font-weight:700;color:${riskLevel}">${hiPct}% risco</div></div>`;
       h+=`<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:10px;background:#F0F0F2">`;
       if(d.total>0){h+=`<div style="width:${d.hi/d.total*100}%;background:#FF3B30"></div><div style="width:${d.me/d.total*100}%;background:#FF9500"></div><div style="width:${d.lo/d.total*100}%;background:#34C759"></div>`}
       h+=`</div>`;
@@ -431,8 +433,8 @@ function render(){
     if(sel.level==="HIGH"||sel.level==="MEDIUM"){
       h+=`<div class="section-title">Ações</div>`;
       if(sel.phone){const wl=waLink(sel.phone,waMsg(sel.level,sel.guest,sel.prop,sel.arrival,sel.nights,sel.offer));h+=`<a href="${wl}" target="_blank" class="action-btn" style="background:#34C759;color:#fff;border-color:#34C759">Enviar WhatsApp</a>`}
-      h+=`<button onclick="addShieldNote('${sel.id}','${sel.guest.replace(/'/g,"\\'")}',${sel.score},${sel.prob},'${sel.level}',${JSON.stringify(sel.factors||[]).replace(/"/g,'&quot;')})" class="action-btn" style="background:#fff;color:#1D1D1F;border-color:#E5E5EA">Adicionar nota na Mews</button>`;
-      h+=`<button onclick="addShieldTask('${sel.id}','${sel.guest.replace(/'/g,"\\'")}',${sel.score},${sel.prob},'${sel.arrival}','${(sel.offer||"").replace(/'/g,"\\'")}')" class="action-btn" style="background:#fff;color:#1D1D1F;border-color:#E5E5EA">Criar task para equipa</button>`;
+      h+=`<button onclick="addShieldNote('${sel.id}','${sel.guest.replace(/'/g,"\\'")}',${sel.score},${sel.prob},'${sel.level}',${JSON.stringify(sel.factors||[]).replace(/"/g,'&quot;')})" class="action-btn" style="background:#fff;color:#000;border-color:#E5E5EA">Adicionar nota na Mews</button>`;
+      h+=`<button onclick="addShieldTask('${sel.id}','${sel.guest.replace(/'/g,"\\'")}',${sel.score},${sel.prob},'${sel.arrival}','${(sel.offer||"").replace(/'/g,"\\'")}')" class="action-btn" style="background:#fff;color:#000;border-color:#E5E5EA">Criar task para equipa</button>`;
     }
     h+=`</div></div>`}
   h+=`</div>`;app.innerHTML=h;
@@ -444,13 +446,13 @@ function rupload(){
   let h=`<div class="hdr"><div class="logo"><i>CS</i><div><h1>Cancellation Shield</h1><small>Hotel Operations</small></div></div></div>`;
   h+=`<div class="up-zone">`;
   h+=`<div style="font-size:36px;margin-bottom:16px">🛡️</div>`;
-  h+=`<div style="font-size:22px;font-weight:800;color:#1D1D1F;margin-bottom:6px">Cancellation Shield</div>`;
+  h+=`<div style="font-size:22px;font-weight:800;color:#000;margin-bottom:6px">Cancellation Shield</div>`;
   h+=`<div style="font-size:13px;color:#86868B;margin-bottom:32px">Previsão inteligente de cancelamentos para o seu hotel</div>`;
   h+=`<div class="api-section"><h3>Carregar dados ao vivo</h3><div class="msg">Liga à Mews API e carrega automaticamente todas as reservas, disponibilidade e histórico.</div><button class="api-btn" onclick="fetchFromMews()" ${st.uping?'disabled':''}>${st.uping?st.umsg:'Conectar à Mews'}</button>${st.umsg&&!st.uping?`<div class="msg ${st.umsg.includes("Erro")?"err":"ok"}" style="margin-top:10px">${st.umsg}</div>`:''}</div>`;
   h+=`<div style="text-align:center;margin:24px 0;color:#D2D2D7;font-size:11px;font-weight:600;letter-spacing:1px">OU CARREGAR FICHEIROS</div>`;
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">`;
-  h+=`<label class="up-box${rC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${rC?"✓":"📋"}</div><div style="font-size:12px;font-weight:600;color:#1D1D1F">Reservation Report</div><div style="font-size:10px;color:#86868B;margin-top:4px">${rC?rC+" ficheiro(s)":"Mews .xlsx"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('reservation',event)" style="display:none"></label>`;
-  h+=`<label class="up-box${aC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${aC?"✓":"📊"}</div><div style="font-size:12px;font-weight:600;color:#1D1D1F">Availability Report</div><div style="font-size:10px;color:#86868B;margin-top:4px">${aC?aC+" ficheiro(s)":"Mews .xlsx"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('availability',event)" style="display:none"></label>`;
+  h+=`<label class="up-box${rC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${rC?"✓":"📋"}</div><div style="font-size:12px;font-weight:600;color:#000">Reservation Report</div><div style="font-size:10px;color:#86868B;margin-top:4px">${rC?rC+" ficheiro(s)":"Mews .xlsx"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('reservation',event)" style="display:none"></label>`;
+  h+=`<label class="up-box${aC?" ok":""}"><div style="font-size:24px;margin-bottom:6px">${aC?"✓":"📊"}</div><div style="font-size:12px;font-weight:600;color:#000">Availability Report</div><div style="font-size:10px;color:#86868B;margin-top:4px">${aC?aC+" ficheiro(s)":"Mews .xlsx"}</div><input type="file" accept=".xlsx" multiple onchange="addFiles('availability',event)" style="display:none"></label>`;
   h+=`</div>`;
   if(rC)h+=`<button class="up-btn" onclick="processFiles()" ${st.uping?'disabled':''}>Processar ${pendingFiles.length} ficheiro${pendingFiles.length>1?"s":""}</button>`;
   if(D.log.length){h+=`<div style="margin-top:20px;text-align:left;background:#fff;border-radius:10px;border:1px solid #E5E5EA;padding:12px;font-size:11px;max-height:120px;overflow-y:auto">`;D.log.forEach(l=>{h+=`<div style="color:${l.includes("Erro")?"#FF3B30":"#34C759"};margin-bottom:3px">${l}</div>`});h+=`</div>`}
