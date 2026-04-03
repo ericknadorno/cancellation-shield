@@ -100,7 +100,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F4F5F9;c
 const nexo=(function(){
   // Global state
   let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:""};
-  let data={reservations:[],availability:{},overbooking:[],obMap:{},log:[],calibratedWeights:null,weatherCache:{},serviceId:null};
+  let data={reservations:[],availability:{},overbooking:[],obMap:{},log:[],calibratedWeights:null,weatherCache:{},serviceId:null,serviceIds:{}};
   let pendingFiles=[];
   let propShorthand={};
   let properties=[];
@@ -261,8 +261,10 @@ const nexo=(function(){
   function parseAvail(wb){const prop=detectProp(wb);const os=wb.Sheets["Occupancy"];if(!os)return{prop,data:{}};const od=XLSX.utils.sheet_to_json(os,{header:1,cellDates:true});const as=wb.Sheets["Availability"]?XLSX.utils.sheet_to_json(wb.Sheets["Availability"],{header:1,cellDates:true}):null;const rs=wb.Sheets["Rate"]?XLSX.utils.sheet_to_json(wb.Sheets["Rate"],{header:1,cellDates:true}):null;const dates=(od[0]||[]).slice(2).filter(d=>d instanceof Date);const result={};dates.forEach((date,di)=>{const key=date.toISOString().split("T")[0];let tO=0,tS=0,tA=0,tR=0,rc=0;const rts=[];for(let ri=1;ri<od.length;ri++){if(od[ri][0]!=="Stay")continue;const rt=String(od[ri][1]||"").trim();const o=Number(od[ri][di+2])||0;const a=as?(Number(as[ri]?.[di+2])||0):0;const rate=rs?(Number(rs[ri]?.[di+2])||0):0;tO+=o;tS++;tA+=a;if(rate>0){tR+=rate;rc++}rts.push({type:rt,occ:o,avail:a,rate:Math.round(rate)})}result[key]={occ:tO,spaces:tS,avail:tA,avgRate:rc>0?Math.round(tR/rc):0,occPct:tS>0?Math.round(tO/tS*1000)/10:0,rooms:rts}});return{prop,data:result}}
 
   // ─── MEWS API ───
-  async function callMewsProxy(endpoint,params){const maxRetries=2;for(let attempt=0;attempt<=maxRetries;attempt++){try{const resp=await fetch("/api/mews",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({endpoint,params})});const text=await resp.text();let res;try{res=JSON.parse(text)}catch(e){if(attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}throw new Error("API returned non-JSON response (status "+resp.status+")")}if(!resp.ok){const detailMsg=res.details?.Message||res.details?.message||(typeof res.details==="string"?res.details:"")||JSON.stringify(res.details||{}).slice(0,200);const msg=(res.error&&res.error!=="Mews API error"?res.error:detailMsg)||res.error||("HTTP "+resp.status);if(resp.status>=500&&attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}throw new Error(msg)}return res}catch(e){if(attempt>=maxRetries)throw e;await new Promise(r=>setTimeout(r,(attempt+1)*1000))}}}
+  let activeProperty=null;
+  async function callMewsProxy(endpoint,params){const maxRetries=2;for(let attempt=0;attempt<=maxRetries;attempt++){try{const resp=await fetch("/api/mews",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({endpoint,params,property:activeProperty})});const text=await resp.text();let res;try{res=JSON.parse(text)}catch(e){if(attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}throw new Error("API returned non-JSON response (status "+resp.status+")")}if(!resp.ok){const detailMsg=res.details?.Message||res.details?.message||(typeof res.details==="string"?res.details:"")||JSON.stringify(res.details||{}).slice(0,200);const msg=(res.error&&res.error!=="Mews API error"?res.error:detailMsg)||res.error||("HTTP "+resp.status);if(resp.status>=500&&attempt<maxRetries){await new Promise(r=>setTimeout(r,(attempt+1)*1000));continue}throw new Error(msg)}return res}catch(e){if(attempt>=maxRetries)throw e;await new Promise(r=>setTimeout(r,(attempt+1)*1000))}}}
   async function fetchAllPages(endpoint,params,dataKey,maxPages=5){let allData=[];let cursor=null;let page=0;do{try{const p={...params,Limitation:{...params.Limitation,Cursor:cursor}};const result=await callMewsProxy(endpoint,p);const items=result[dataKey]||[];allData=allData.concat(items);cursor=result.Cursor||null}catch(e){addLog("nexo: Page "+(page+1)+" of "+endpoint+" failed: "+e.message);break}page++;if(page>=maxPages)break}while(cursor);return allData}
+  async function discoverProperties(){try{const resp=await fetch("/api/mews",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({endpoint:"properties"})});const data=await resp.json();return data.properties||[]}catch(e){return[]}}
   function normPayment(s){if(!s)return"";const l=s.toLowerCase();if(l==="charged"||l==="completed")return"success";if(l==="pending")return"";if(l==="failed"||l==="canceled")return"fail";return s}
 
   function mapMewsReservation(res,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName,itemsMap,paymentsMap,cancelHistoryMap){const prop=enterpriseName||"Property";const arr=res.StartUtc?new Date(res.StartUtc):null;const dep=res.EndUtc?new Date(res.EndUtc):null;const cre=res.CreatedUtc?new Date(res.CreatedUtc):null;const now=new Date();const nights=arr&&dep?Math.round((dep-arr)/864e5):0;const lt=arr&&cre?Math.round((arr-cre)/864e5):0;const du=arr?Math.round((arr-now)/864e5):999;const rateName=ratesMap[res.RateId]||"";const sourceName=sourcesMap[res.SourceId]||res.Origin||"";const customer=customersMap[res.AccountId]||customersMap[res.CustomerId]||{};const email=customer.Email||"";const phone=customer.Phone||"";const firstName=customer.FirstName||"";const lastName=customer.LastName||"";const nationality=customer.NationalityCode||"";const hasOtaEmail=customer.HasOtaEmail||false;const resource=resourcesMap[res.AssignedResourceId]||{};const categoryId=res.RequestedResourceCategoryId||resource.CategoryId||"";const category=categoriesMap[categoryId]||{};let room=resource.Name||"";const pc=res.PersonCounts;const apiPersonCount=pc?pc.reduce((s,p)=>s+(p.Count||0),0):0;const companions=companionsMap[res.Id]||[];const personCount=apiPersonCount>0?apiPersonCount:(1+companions.length);const itemsTotal=itemsMap?Math.round(itemsMap[res.Id]||0):0;const totalAmount=itemsTotal>0?itemsTotal:(res.TotalAmount?(res.TotalAmount.Value||0):0);const adr=nights>0?Math.round(totalAmount/nights):0;const notes=res.Notes||"";const noc=!email&&!phone;const paymentStatus=paymentsMap[res.AccountId]||"";const hasCreditCard=!!(res.CreditCardId);const createdMs=res.CreatedUtc?new Date(res.CreatedUtc).getTime():0;const updatedMs=res.UpdatedUtc?new Date(res.UpdatedUtc).getTime():0;const wasModified=Math.abs(updatedMs-createdMs)>60000;const bookingHour=cre?cre.getUTCHours():null;const modificationCount=wasModified?Math.max(1,Math.round(Math.abs(updatedMs-createdMs)/3600000)):0;const history=cancelHistoryMap[res.AccountId||res.CustomerId]||{stays:0,cancels:0};const previousStays=history.stays;const previousCancels=history.cancels;const hasChildren=pc?pc.some(p=>(p.Count||0)>0&&p.AgeCategoryId&&p.AgeCategoryId!==pc[0]?.AgeCategoryId):false;const hasTravelAgency=!!(res.TravelAgencyId);return{id:res.Id,guest:(firstName+" "+lastName).trim(),prop,room,roomType:category.Name||"",status:res.State||"",arrival:arr?arr.toISOString().split("T")[0]:"",departure:dep?dep.toISOString().split("T")[0]:"",nights,daysUntil:du,leadTimeDays:lt,rate:rateName,adr,total:Math.round(totalAmount),source:sourceName,payment:normPayment(res.PaymentState||""),email,phone,persons:personCount,nationality,hasNoContact:noc,isSolo:personCount===1,arrMonth:arr?arr.getMonth()+1:null,isRelay:email.includes("@guest.booking.com"),isGenius:notes.includes("booker_is_genius"),hasPet:/bringing your pet.*(Sim|Yes)/i.test(notes),hasParking:false,hasVoucher:!!(res.VoucherId),guestCheckedIn:notes.includes("Guest Check-in info")||notes.includes("online check-in")||notes.includes("pre-check-in"),cardType:"",classifications:"",lateArrival:/between 2[0-3]|between 0[0-4]/i.test(notes),travelAgency:res.TravelAgencyId||"",hasOtaEmail,paymentStatus,hasCreditCard,wasModified,previousStays,previousCancels,hasChildren,hasTravelAgency,bookingHour,modificationCount,propAvgAdr:0,bookPayGapDays:null,guestActiveBookings:1,weatherCode:null}}
@@ -270,38 +272,76 @@ const nexo=(function(){
   function mapMewsAvailability(availData,categoriesMap){const result={};const datesUtc=availData.DatesUtc||[];const categoryAvails=availData.CategoryAvailabilities||[];datesUtc.forEach((dateStr,idx)=>{const date=new Date(dateStr);const dateKey=date.toISOString().split("T")[0];let totalSpaces=0;let totalAvailable=0;const rooms=[];categoryAvails.forEach(ca=>{const cat=categoriesMap[ca.CategoryId];if(!cat)return;const avails=ca.Availabilities||[];const availOnDay=avails[idx]||0;const maxAvail=Math.max(...avails,0);totalSpaces+=maxAvail;totalAvailable+=availOnDay;rooms.push({type:cat.Name||ca.CategoryId,categoryId:ca.CategoryId,avail:availOnDay,capacity:maxAvail,rate:0})});const totalOccupied=Math.max(0,totalSpaces-totalAvailable);const occPct=totalSpaces>0?Math.round(totalOccupied/totalSpaces*1000)/10:0;result[dateKey]={occ:totalOccupied,spaces:totalSpaces,avail:totalAvailable,avgRate:0,occPct,rooms}});return result}
 
   async function fetchFromMews(){
-    state.uping=true;state.umsg="Conectando à Mews API...";const startTime=Date.now();render();
+    state.uping=true;state.umsg="Descobrindo propriedades...";const startTime=Date.now();render();
     try{
       const now=new Date();const startUtcRes=new Date(now);startUtcRes.setDate(startUtcRes.getDate()-7);const endUtcRes=new Date(now);endUtcRes.setDate(endUtcRes.getDate()+90);const startUtcAvail=new Date(now);const endUtcAvail=new Date(now);endUtcAvail.setDate(endUtcAvail.getDate()+90);
-      state.umsg="Carregando configuração...";render();
-      const config=await callMewsProxy("configuration/get",{});const enterpriseName=config.Enterprise?.Name||"";
-      state.umsg="Carregando serviços...";render();
-      const servicesRes=await callMewsProxy("services/getAll",{Limitation:{Count:1000}});const services=servicesRes.Services||[];
-      state.umsg="Carregando taxas e fontes...";render();
-      const ratesRes=await fetchAllPages("rates/getAll",{Limitation:{Count:1000}},"Rates");const ratesMap={};ratesRes.forEach(r=>{ratesMap[r.Id]=r.Name||""});
-      const sourcesRes=await fetchAllPages("sources/getAll",{Limitation:{Count:1000}},"Sources");const sourcesMap={};sourcesRes.forEach(s=>{sourcesMap[s.Id]=s.Name||""});
-      state.umsg="Carregando apartamentos...";render();
-      const resourcesRes=await callMewsProxy("resources/getAll",{Extent:{Resources:true,ResourceCategories:true}});const resourcesMap={};const categoriesMap={};(resourcesRes.Resources||[]).forEach(r=>{resourcesMap[r.Id]=r});(resourcesRes.ResourceCategories||[]).forEach(c=>{categoriesMap[c.Id]=c});
-      state.umsg="Carregando reservas...";render();
-      const resvRes=await fetchAllPages("reservations/getAll/2023-06-06",{States:["Confirmed","Started"],TimeFilter:"Start",StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString(),Limitation:{Count:200},Extent:{Reservations:true,BusinessSegments:false}},"Reservations");
-      const filteredResv=resvRes;
-      state.umsg="Carregando clientes...";render();
-      const accountIds=[...new Set(filteredResv.map(r=>r.AccountId||r.CustomerId).filter(Boolean))];const customersMap={};for(let i=0;i<accountIds.length;i+=200){try{const batch=accountIds.slice(i,i+200);const res=await callMewsProxy("customers/getAll",{CustomerIds:batch,Limitation:{Count:200}});(res.Customers||[]).forEach(c=>{customersMap[c.Id]=c})}catch(e){addLog("Customer batch failed: "+e.message)}}
-      state.umsg="Carregando receita...";render();
-      const itemsMap={};const resIds=filteredResv.map(r=>r.Id);for(let i=0;i<resIds.length;i+=50){try{const batch=resIds.slice(i,i+50);const itemsRes=await callMewsProxy("orderItems/getAll",{ServiceOrderIds:batch,Limitation:{Count:1000}});(itemsRes.OrderItems||[]).forEach(it=>{const rid=it.ServiceOrderId;if(!itemsMap[rid])itemsMap[rid]=0;itemsMap[rid]+=(it.Amount?.GrossValue||0)})}catch(e){addLog("OrderItems batch failed: "+e.message)}}
-      state.umsg="Carregando pagamentos...";render();
-      const paymentsMap={};const payAccountIds=[...new Set(filteredResv.map(r=>r.AccountId).filter(Boolean))];for(let i=0;i<payAccountIds.length;i+=50){try{const batch=payAccountIds.slice(i,i+50);const payRes=await callMewsProxy("payments/getAll",{AccountIds:batch,Limitation:{Count:500}});(payRes.Payments||[]).forEach(p=>{const aid=p.AccountId;const state2=(p.State||"").toLowerCase();if(state2==="charged"||state2==="paid"){paymentsMap[aid]="charged"}else if(!paymentsMap[aid]&&state2==="pending"){paymentsMap[aid]="pending"}else if(!paymentsMap[aid]){paymentsMap[aid]=state2}})}catch(e){addLog("Payments batch failed: "+e.message)}}
-      state.umsg="Analisando histórico...";render();
-      const cancelHistoryMap={};for(let i=0;i<payAccountIds.length;i+=50){try{const batch=payAccountIds.slice(i,i+50);const histRes=await callMewsProxy("reservations/getAll/2023-06-06",{AccountIds:batch,States:["Processed","Canceled"],Limitation:{Count:500},Extent:{Reservations:true}});(histRes.Reservations||[]).forEach(r=>{const aid=r.AccountId;if(!cancelHistoryMap[aid])cancelHistoryMap[aid]={stays:0,cancels:0};if(r.State==="Processed")cancelHistoryMap[aid].stays++;if(r.State==="Canceled")cancelHistoryMap[aid].cancels++})}catch(e){addLog("History batch failed: "+e.message)}}
-      const accomService=services.find(s=>s.Type==="Reservable");if(accomService)data.serviceId=accomService.Id;let availRes={CategoryAvailabilities:[],DatesUtc:[]};if(accomService){try{availRes=await callMewsProxy("services/getAvailability",{ServiceId:accomService.Id,StartUtc:startUtcAvail.toISOString(),EndUtc:endUtcAvail.toISOString()})}catch(e){addLog("Availability fetch failed: "+e.message)}}
-      let companionsMap={};try{const companionsRes=await fetchAllPages("companionships/getAll",{ReservationIds:filteredResv.map(r=>r.Id).slice(0,200),Limitation:{Count:1000}},"Companionships",2);companionsRes.forEach(c=>{if(!companionsMap[c.ReservationId])companionsMap[c.ReservationId]=[];companionsMap[c.ReservationId].push(c)})}catch(e){addLog("Companionships fetch failed")}
-      state.umsg="Mapeando dados...";render();
-      const mappedResv=filteredResv.map(r=>mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName,itemsMap,paymentsMap,cancelHistoryMap));
-      // Weather data reserved for future integration
-      const availData=mapMewsAvailability(availRes,categoriesMap);const detectedProp=mappedResv.length>0?mappedResv[0].prop:"";
-      pendingFiles.push({type:"mews-reservations",data:mappedResv});pendingFiles.push({type:"mews-availability",data:availData,prop:detectedProp});
-      state.umsg="Processando...";render();await scoreAndProcessReservations();
-      const elapsed=((Date.now()-startTime)/1000).toFixed(1);state.uping=false;state.umsg=`${mappedResv.length} reservas carregadas em ${elapsed}s`;addLog("Mews API: "+mappedResv.length+" reservas");render();
+
+      // Discover configured properties
+      const props=await discoverProperties();
+      if(props.length===0){
+        // Fallback: single property (legacy mode)
+        props.push(null);
+        addLog("Nenhuma propriedade multi configurada, usando token padrão");
+      }
+      const propNames={hq:"HQ Portfolio",alegria:"Alegria",sbi:"Santa Barbara I",sbii:"Santa Barbara II"};
+      let allMapped=[];let totalResv=0;
+
+      for(let pi=0;pi<props.length;pi++){
+        const propKey=props[pi];
+        activeProperty=propKey;
+        const label=propNames[propKey]||propKey||"Property";
+        const progress=props.length>1?` (${pi+1}/${props.length})`:"";
+
+        state.umsg=`${label}${progress}: configuração...`;render();
+        const config=await callMewsProxy("configuration/get",{});const enterpriseName=config.Enterprise?.Name||label;
+
+        state.umsg=`${label}${progress}: serviços...`;render();
+        const servicesRes=await callMewsProxy("services/getAll",{Limitation:{Count:1000}});const services=servicesRes.Services||[];
+
+        state.umsg=`${label}${progress}: taxas e fontes...`;render();
+        const ratesRes=await fetchAllPages("rates/getAll",{Limitation:{Count:1000}},"Rates");const ratesMap={};ratesRes.forEach(r=>{ratesMap[r.Id]=r.Name||""});
+        const sourcesRes=await fetchAllPages("sources/getAll",{Limitation:{Count:1000}},"Sources");const sourcesMap={};sourcesRes.forEach(s=>{sourcesMap[s.Id]=s.Name||""});
+
+        state.umsg=`${label}${progress}: apartamentos...`;render();
+        const resourcesRes=await callMewsProxy("resources/getAll",{Extent:{Resources:true,ResourceCategories:true}});const resourcesMap={};const categoriesMap={};(resourcesRes.Resources||[]).forEach(r=>{resourcesMap[r.Id]=r});(resourcesRes.ResourceCategories||[]).forEach(c=>{categoriesMap[c.Id]=c});
+
+        state.umsg=`${label}${progress}: reservas...`;render();
+        const resvRes=await fetchAllPages("reservations/getAll/2023-06-06",{States:["Confirmed","Started"],TimeFilter:"Start",StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString(),Limitation:{Count:200},Extent:{Reservations:true,BusinessSegments:false}},"Reservations");
+
+        state.umsg=`${label}${progress}: clientes...`;render();
+        const accountIds=[...new Set(resvRes.map(r=>r.AccountId||r.CustomerId).filter(Boolean))];const customersMap={};for(let i=0;i<accountIds.length;i+=200){try{const batch=accountIds.slice(i,i+200);const res=await callMewsProxy("customers/getAll",{CustomerIds:batch,Limitation:{Count:200}});(res.Customers||[]).forEach(c=>{customersMap[c.Id]=c})}catch(e){addLog(label+": Customer batch failed: "+e.message)}}
+
+        state.umsg=`${label}${progress}: receita...`;render();
+        const itemsMap={};const resIds=resvRes.map(r=>r.Id);for(let i=0;i<resIds.length;i+=50){try{const batch=resIds.slice(i,i+50);const itemsRes=await callMewsProxy("orderItems/getAll",{ServiceOrderIds:batch,Limitation:{Count:1000}});(itemsRes.OrderItems||[]).forEach(it=>{const rid=it.ServiceOrderId;if(!itemsMap[rid])itemsMap[rid]=0;itemsMap[rid]+=(it.Amount?.GrossValue||0)})}catch(e){addLog(label+": OrderItems batch failed: "+e.message)}}
+
+        state.umsg=`${label}${progress}: pagamentos...`;render();
+        const paymentsMap={};const payAccountIds=[...new Set(resvRes.map(r=>r.AccountId).filter(Boolean))];for(let i=0;i<payAccountIds.length;i+=50){try{const batch=payAccountIds.slice(i,i+50);const payRes=await callMewsProxy("payments/getAll",{AccountIds:batch,Limitation:{Count:500}});(payRes.Payments||[]).forEach(p=>{const aid=p.AccountId;const state2=(p.State||"").toLowerCase();if(state2==="charged"||state2==="paid"){paymentsMap[aid]="charged"}else if(!paymentsMap[aid]&&state2==="pending"){paymentsMap[aid]="pending"}else if(!paymentsMap[aid]){paymentsMap[aid]=state2}})}catch(e){addLog(label+": Payments batch failed: "+e.message)}}
+
+        state.umsg=`${label}${progress}: histórico...`;render();
+        const cancelHistoryMap={};for(let i=0;i<payAccountIds.length;i+=50){try{const batch=payAccountIds.slice(i,i+50);const histRes=await callMewsProxy("reservations/getAll/2023-06-06",{AccountIds:batch,States:["Processed","Canceled"],Limitation:{Count:500},Extent:{Reservations:true}});(histRes.Reservations||[]).forEach(r=>{const aid=r.AccountId;if(!cancelHistoryMap[aid])cancelHistoryMap[aid]={stays:0,cancels:0};if(r.State==="Processed")cancelHistoryMap[aid].stays++;if(r.State==="Canceled")cancelHistoryMap[aid].cancels++})}catch(e){addLog(label+": History batch failed: "+e.message)}}
+
+        const accomService=services.find(s=>s.Type==="Reservable");
+        if(accomService){if(pi===0)data.serviceId=accomService.Id;data.serviceIds[enterpriseName]=accomService.Id;}
+        let availRes={CategoryAvailabilities:[],DatesUtc:[]};
+        if(accomService){try{availRes=await callMewsProxy("services/getAvailability",{ServiceId:accomService.Id,StartUtc:startUtcAvail.toISOString(),EndUtc:endUtcAvail.toISOString()})}catch(e){addLog(label+": Availability fetch failed: "+e.message)}}
+
+        let companionsMap={};try{const companionsRes=await fetchAllPages("companionships/getAll",{ReservationIds:resvRes.map(r=>r.Id).slice(0,200),Limitation:{Count:1000}},"Companionships",2);companionsRes.forEach(c=>{if(!companionsMap[c.ReservationId])companionsMap[c.ReservationId]=[];companionsMap[c.ReservationId].push(c)})}catch(e){addLog(label+": Companionships fetch failed")}
+
+        state.umsg=`${label}${progress}: mapeando...`;render();
+        const mappedResv=resvRes.map(r=>mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName,itemsMap,paymentsMap,cancelHistoryMap));
+        const availData=mapMewsAvailability(availRes,categoriesMap);
+
+        pendingFiles.push({type:"mews-reservations",data:mappedResv});
+        pendingFiles.push({type:"mews-availability",data:availData,prop:enterpriseName});
+        allMapped=allMapped.concat(mappedResv);
+        totalResv+=mappedResv.length;
+        addLog(label+": "+mappedResv.length+" reservas");
+      }
+
+      activeProperty=null;
+      state.umsg="Processando todas as propriedades...";render();
+      await scoreAndProcessReservations();
+      const elapsed=((Date.now()-startTime)/1000).toFixed(1);state.uping=false;state.umsg=`${totalResv} reservas de ${props.length} propriedade${props.length>1?"s":""} em ${elapsed}s`;render();
     }catch(err){state.uping=false;state.umsg="Erro: "+err.message;addLog("Erro: "+err.message);render()}
   }
 
@@ -315,7 +355,7 @@ const nexo=(function(){
       state.umsg=`A processar ${filesDone}/${pendingFiles.length}: ${pf.name||pf.type}`;
       render();
       try{
-        if(pf.type==="mews-reservations"){results.res=pf.data}
+        if(pf.type==="mews-reservations"){results.res=results.res.concat(pf.data)}
         else if(pf.type==="mews-availability"){results.avail[pf.prop]=pf.data}
         else if(pf.type==="reservation"){
           const wb=XLSX.read(pf.buf,{cellDates:true});
@@ -361,7 +401,7 @@ const nexo=(function(){
     // Compute overbooking
     const ob=computeOverbooking(scored,results.avail);
 
-    data={reservations:scored,availability:results.avail,overbooking:ob.overbooking,obMap:ob.obMap,log:data.log.concat(results.logs),generated:new Date().toISOString(),calibratedWeights:data.calibratedWeights,weatherCache:data.weatherCache,serviceId:data.serviceId};
+    data={reservations:scored,availability:results.avail,overbooking:ob.overbooking,obMap:ob.obMap,log:data.log.concat(results.logs),generated:new Date().toISOString(),calibratedWeights:data.calibratedWeights,weatherCache:data.weatherCache,serviceId:data.serviceId,serviceIds:data.serviceIds};
     state.phase="dashboard";
     state.uping=false;
     state.umsg="";
@@ -478,11 +518,14 @@ const nexo=(function(){
     const btn=document.getElementById("ob-btn-"+obIndex);
     if(btn){btn.disabled=true;btn.textContent="A abrir...";btn.style.opacity="0.6"}
     try{
-      if(!data.serviceId)throw new Error("ServiceId não encontrado");
+      const svcId=data.serviceIds[o.prop]||data.serviceId;
+      if(!svcId)throw new Error("ServiceId não encontrado para "+o.prop);
+      // Set activeProperty for this call based on prop name
+      const propEntry=Object.entries(data.serviceIds).find(([k])=>k===o.prop);
+      if(propEntry){const propKeyMap={};Object.keys(data.serviceIds).forEach(name=>{const lc=name.toLowerCase();if(lc.includes("hq")||lc.includes("portfolio"))propKeyMap[name]="hq";else if(lc.includes("alegria"))propKeyMap[name]="alegria";else if(lc.includes("santa")&&lc.includes("ii"))propKeyMap[name]="sbii";else if(lc.includes("santa"))propKeyMap[name]="sbi"});activeProperty=propKeyMap[o.prop]||null}
       const catIds=o.categoryIds||[];
       if(!catIds.length){
-        // Fallback: get all categories from availability for this date
-        const av=data.availability[o.date];
+        const av=data.availability[o.prop]?.[o.date]||data.availability[o.date];
         if(av&&av.rooms)catIds.push(...av.rooms.map(r=>r.categoryId).filter(Boolean));
       }
       if(!catIds.length)throw new Error("Sem categorias disponíveis");
@@ -491,7 +534,7 @@ const nexo=(function(){
       let ok=0;
       for(const catId of catIds){
         await callMewsProxy("services/updateAvailability",{
-          ServiceId:data.serviceId,
+          ServiceId:svcId,
           AvailabilityUpdates:[{
             ResourceCategoryId:catId,
             FirstTimeUnitStartUtc:dateStart,
@@ -501,9 +544,11 @@ const nexo=(function(){
         });
         ok++;
       }
+      activeProperty=null;
       addLog(`Overbooking: +${ok} em ${fmt(o.date)} (${o.prop})`);
       if(btn){btn.textContent="✓ Aberto à venda";btn.style.background="#8B9A00";btn.style.color="#fff";btn.style.borderColor="#8B9A00";btn.style.opacity="1"}
     }catch(e){
+      activeProperty=null;
       addLog(`Overbooking falhou: ${e.message}`);
       if(btn){btn.textContent="✗ "+e.message.slice(0,30);btn.style.background="#FF3B30";btn.style.color="#fff";btn.style.borderColor="#FF3B30";btn.style.opacity="1";btn.disabled=false}
     }
