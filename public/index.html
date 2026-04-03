@@ -487,8 +487,8 @@ const nexo=(function(){
         if(av&&av.rooms)catIds.push(...av.rooms.map(r=>r.categoryId).filter(Boolean));
       }
       if(!catIds.length)throw new Error("Sem categorias disponíveis");
-      const dateStart=o.date+"T00:00:00Z";
-      const dateEnd=o.date+"T00:00:00Z";
+      const dateStart=o.date+"T23:00:00Z";
+      const dateEnd=o.date+"T23:00:00Z";
       let ok=0;
       for(const catId of catIds){
         await callMewsProxy("services/updateAvailability",{
@@ -497,7 +497,7 @@ const nexo=(function(){
             ResourceCategoryId:catId,
             FirstTimeUnitStartUtc:dateStart,
             LastTimeUnitStartUtc:dateEnd,
-            UnitCountAdjustment:1
+            UnitCountAdjustment:{Value:1}
           }]
         });
         ok++;
