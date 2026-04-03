@@ -92,9 +92,8 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F4F5F9;c
 <div id="app"></div>
 <script>
 // ═══════════════════════════════════════════════════
-// NEXO v1.0 — CANCELLATION INTELLIGENCE
-// 27 signals · auto-calibration · EV overbooking
-// Powered by nexo
+// nexo v1.0 — cancellation intelligence for hotels
+// 27-signal risk model · EV overbooking · Mews PMS integration
 // ═══════════════════════════════════════════════════
 
 // ─── NAMESPACE ───
@@ -298,7 +297,7 @@ const nexo=(function(){
       let companionsMap={};try{const companionsRes=await fetchAllPages("companionships/getAll",{ReservationIds:filteredResv.map(r=>r.Id).slice(0,200),Limitation:{Count:1000}},"Companionships",2);companionsRes.forEach(c=>{if(!companionsMap[c.ReservationId])companionsMap[c.ReservationId]=[];companionsMap[c.ReservationId].push(c)})}catch(e){addLog("Companionships fetch failed")}
       state.umsg="Mapeando dados...";render();
       const mappedResv=filteredResv.map(r=>mapMewsReservation(r,ratesMap,sourcesMap,resourcesMap,categoriesMap,customersMap,companionsMap,enterpriseName,itemsMap,paymentsMap,cancelHistoryMap));
-      try{const weatherRes=await callMewsProxy("weather/forecast",{lat:38.7223,lon:-9.1393});if(weatherRes?.forecasts){data.weatherCache=weatherRes.forecasts;mappedResv.forEach(r=>{if(r.arrival&&data.weatherCache[r.arrival])r.weatherCode=data.weatherCache[r.arrival].code});addLog("Previsão meteo carregada: "+Object.keys(weatherRes.forecasts).length+" dias")}}catch(e){addLog("Weather fetch skipped: "+e.message)}
+      // Weather data reserved for future integration
       const availData=mapMewsAvailability(availRes,categoriesMap);const detectedProp=mappedResv.length>0?mappedResv[0].prop:"";
       pendingFiles.push({type:"mews-reservations",data:mappedResv});pendingFiles.push({type:"mews-availability",data:availData,prop:detectedProp});
       state.umsg="Processando...";render();await scoreAndProcessReservations();
