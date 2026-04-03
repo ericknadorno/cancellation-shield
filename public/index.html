@@ -311,7 +311,7 @@ const nexo=(function(){
         const resvRes=await fetchAllPages("reservations/getAll/2023-06-06",{States:["Confirmed","Started"],TimeFilter:"Start",StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString(),Limitation:{Count:200},Extent:{Reservations:true,BusinessSegments:false}},"Reservations");
 
         state.umsg=`${label}${progress}: clientes...`;render();
-        const accountIds=[...new Set(resvRes.map(r=>r.AccountId||r.CustomerId).filter(Boolean))];const customersMap={};for(let i=0;i<accountIds.length;i+=200){try{const batch=accountIds.slice(i,i+200);const res=await callMewsProxy("customers/getAll",{CustomerIds:batch,Limitation:{Count:200}});(res.Customers||[]).forEach(c=>{customersMap[c.Id]=c})}catch(e){addLog(label+": Customer batch failed: "+e.message)}}
+        const accountIds=[...new Set(resvRes.map(r=>r.AccountId||r.CustomerId).filter(Boolean))];const customersMap={};for(let i=0;i<accountIds.length;i+=200){try{const batch=accountIds.slice(i,i+200);const res=await callMewsProxy("customers/getAll",{CustomerIds:batch,Limitation:{Count:200},Extent:{Customers:true,Documents:false,Addresses:false}});(res.Customers||[]).forEach(c=>{customersMap[c.Id]=c})}catch(e){addLog(label+": Customer batch failed: "+e.message)}}
 
         state.umsg=`${label}${progress}: receita...`;render();
         const itemsMap={};const resIds=resvRes.map(r=>r.Id);for(let i=0;i<resIds.length;i+=50){try{const batch=resIds.slice(i,i+50);const itemsRes=await callMewsProxy("orderItems/getAll",{ServiceOrderIds:batch,Limitation:{Count:1000}});(itemsRes.OrderItems||[]).forEach(it=>{const rid=it.ServiceOrderId;if(!itemsMap[rid])itemsMap[rid]=0;itemsMap[rid]+=(it.Amount?.GrossValue||0)})}catch(e){addLog(label+": OrderItems batch failed: "+e.message)}}
