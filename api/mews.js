@@ -1,21 +1,67 @@
+// nexo — Mews Connector API proxy (production-hardened)
+// Stateless serverless function. Injects auth, enforces whitelist, blocks param injection.
+
+const READ_ENDPOINTS = [
+  "configuration/get",
+  "services/getAll",
+  "services/getAvailability",
+  "rates/getAll",
+  "sources/getAll",
+  "resources/getAll",
+  "reservations/getAll/2023-06-06",
+  "customers/getAll",
+  "payments/getAll",
+  "orderItems/getAll",
+  "companionships/getAll"
+];
+
+const WRITE_ENDPOINTS = [
+  "serviceOrderNotes/add",
+  "tasks/add",
+  "services/updateAvailability"
+];
+
+const ALL_ALLOWED = [...READ_ENDPOINTS, ...WRITE_ENDPOINTS];
+
+// Fields that MUST NOT be overridden by client params
+const PROTECTED_FIELDS = ["ClientToken", "AccessToken", "Client"];
+
+// Max request body size (bytes) — reject oversized payloads
+const MAX_BODY_SIZE = 50_000;
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // CORS — restrict to known origins in production
+  const origin = req.headers.origin || "";
+  const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS[0]);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
+  // --- Auth tokens ---
   const CLIENT_TOKEN = process.env.MEWS_CLIENT_TOKEN;
-  const CLIENT = process.env.MEWS_CLIENT_NAME || "nexo 1.0";
+  const CLIENT = process.env.MEWS_CLIENT_NAME || "Cancellation Shield 1.0";
   const BASE = process.env.MEWS_API_BASE || "https://api.mews.com/api/connector/v1";
 
   if (!CLIENT_TOKEN) {
-    return res.status(500).json({ error: "MEWS_CLIENT_TOKEN not configured" });
+    console.error("[mews] FATAL: MEWS_CLIENT_TOKEN not configured");
+    return res.status(500).json({ error: "Server misconfiguration" });
+  }
+
+  // --- Parse and validate body ---
+  const rawBodySize = JSON.stringify(req.body || {}).length;
+  if (rawBodySize > MAX_BODY_SIZE) {
+    return res.status(413).json({ error: "Request body too large" });
   }
 
   const { endpoint, params, property } = req.body || {};
 
-  // Property-to-token mapping
+  // --- Property-to-token mapping ---
   const PROPERTY_TOKENS = {
     hq: process.env.MEWS_ACCESS_TOKEN_HQ,
     alegria: process.env.MEWS_ACCESS_TOKEN_ALEGRIA,
@@ -23,7 +69,7 @@ export default async function handler(req, res) {
     sbii: process.env.MEWS_ACCESS_TOKEN_SBII
   };
 
-  // Discovery: return which properties are configured
+  // --- Discovery endpoint ---
   if (endpoint === "properties") {
     const available = Object.entries(PROPERTY_TOKENS)
       .filter(([, token]) => !!token)
@@ -31,66 +77,96 @@ export default async function handler(req, res) {
     return res.status(200).json({ properties: available });
   }
 
-  if (!endpoint) return res.status(400).json({ error: "Missing endpoint" });
+  // --- Validate endpoint ---
+  if (!endpoint || typeof endpoint !== "string") {
+    return res.status(400).json({ error: "Missing or invalid endpoint" });
+  }
+  if (!ALL_ALLOWED.includes(endpoint)) {
+    console.warn(`[mews] BLOCKED endpoint: ${endpoint}`);
+    return res.status(403).json({ error: "Endpoint not allowed" });
+  }
 
-  // Resolve access token: property-specific or legacy fallback
+  // --- Validate property key ---
+  if (property && typeof property === "string") {
+    if (!PROPERTY_TOKENS[property]) {
+      return res.status(400).json({ error: "Unknown property key" });
+    }
+  }
+
+  // --- Resolve access token ---
   const accessToken = property
     ? PROPERTY_TOKENS[property]
     : (process.env.MEWS_ACCESS_TOKEN || Object.values(PROPERTY_TOKENS).find(Boolean));
 
   if (!accessToken) {
-    return res.status(400).json({ error: "No access token for property: " + (property || "default") });
+    return res.status(400).json({ error: "No access token available" });
   }
 
-  const ALLOWED = [
-    "configuration/get",
-    "services/getAll",
-    "services/getAvailability",
-    "rates/getAll",
-    "sources/getAll",
-    "resources/getAll",
-    "reservations/getAll/2023-06-06",
-    "customers/getAll",
-    "payments/getAll",
-    "orderItems/getAll",
-    "companionships/getAll",
-    "serviceOrderNotes/add",
-    "tasks/add",
-    "services/updateAvailability"
-  ];
-
-  if (!ALLOWED.includes(endpoint)) {
-    return res.status(403).json({ error: "Endpoint not allowed: " + endpoint });
+  // --- Sanitize params: strip any protected fields ---
+  const safeParams = { ...(params || {}) };
+  for (const key of PROTECTED_FIELDS) {
+    delete safeParams[key];
   }
+
+  // --- Build Mews request body ---
+  const body = {
+    ClientToken: CLIENT_TOKEN,
+    AccessToken: accessToken,
+    Client: CLIENT,
+    ...safeParams
+  };
+
+  // --- Structured logging (no secrets) ---
+  const logCtx = {
+    endpoint,
+    property: property || "default",
+    isWrite: WRITE_ENDPOINTS.includes(endpoint),
+    ts: new Date().toISOString()
+  };
+  console.log(`[mews] ${logCtx.ts} | ${logCtx.isWrite ? "WRITE" : "READ"} ${endpoint} | prop=${logCtx.property}`);
+
+  // --- Call Mews API with timeout ---
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
   try {
-    const body = {
-      ClientToken: CLIENT_TOKEN,
-      AccessToken: accessToken,
-      Client: CLIENT,
-      ...(params || {})
-    };
-
-    console.log(`[mews] ${endpoint} → ${BASE} | prop=${property||"default"} | token=${accessToken?.slice(0,8)}...`);
     const mewsRes = await fetch(BASE + "/" + endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
+
+    // Handle non-JSON responses
+    const contentType = mewsRes.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const text = await mewsRes.text();
+      console.error(`[mews] Non-JSON response from ${endpoint}: ${mewsRes.status} — ${text.slice(0, 200)}`);
+      return res.status(502).json({ error: "Mews returned non-JSON response", status: mewsRes.status });
+    }
 
     const data = await mewsRes.json();
 
     if (!mewsRes.ok) {
+      // Extract safe error message — don't forward full Mews internals
+      const mewsMsg = data.Message || data.message || "";
+      console.error(`[mews] ERROR ${mewsRes.status} on ${endpoint}: ${mewsMsg}`);
       return res.status(mewsRes.status).json({
         error: "Mews API error",
         status: mewsRes.status,
-        details: data
+        message: mewsMsg || ("HTTP " + mewsRes.status)
       });
     }
 
     return res.status(200).json(data);
   } catch (err) {
-    console.error("Proxy error:", err);
-    return res.status(500).json({ error: "Proxy error: " + err.message });
+    clearTimeout(timeout);
+    if (err.name === "AbortError") {
+      console.error(`[mews] TIMEOUT on ${endpoint} after 15s`);
+      return res.status(504).json({ error: "Mews API timeout" });
+    }
+    console.error(`[mews] NETWORK ERROR on ${endpoint}: ${err.message}`);
+    return res.status(502).json({ error: "Network error calling Mews" });
   }
 }
