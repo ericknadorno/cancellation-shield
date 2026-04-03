@@ -362,7 +362,7 @@ const nexo=(function(){
     // Compute overbooking
     const ob=computeOverbooking(scored,results.avail);
 
-    data={reservations:scored,availability:results.avail,overbooking:ob.overbooking,obMap:ob.obMap,log:data.log.concat(results.logs),generated:new Date().toISOString(),calibratedWeights:data.calibratedWeights,weatherCache:data.weatherCache};
+    data={reservations:scored,availability:results.avail,overbooking:ob.overbooking,obMap:ob.obMap,log:data.log.concat(results.logs),generated:new Date().toISOString(),calibratedWeights:data.calibratedWeights,weatherCache:data.weatherCache,serviceId:data.serviceId};
     state.phase="dashboard";
     state.uping=false;
     state.umsg="";
