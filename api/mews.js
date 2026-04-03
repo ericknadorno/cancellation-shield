@@ -7,7 +7,7 @@ export default async function handler(req, res) {
 
   const CLIENT_TOKEN = process.env.MEWS_CLIENT_TOKEN;
   const CLIENT = process.env.MEWS_CLIENT_NAME || "nexo 1.0";
-  const BASE = process.env.MEWS_API_BASE || "https://api.mews-demo.com/api/connector/v1";
+  const BASE = process.env.MEWS_API_BASE || "https://api.mews.com/api/connector/v1";
 
   if (!CLIENT_TOKEN) {
     return res.status(500).json({ error: "MEWS_CLIENT_TOKEN not configured" });
@@ -71,6 +71,7 @@ export default async function handler(req, res) {
       ...(params || {})
     };
 
+    console.log(`[mews] ${endpoint} → ${BASE} | prop=${property||"default"} | token=${accessToken?.slice(0,8)}...`);
     const mewsRes = await fetch(BASE + "/" + endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
