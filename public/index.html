@@ -305,7 +305,7 @@ const nexo=(function(){
         const sourcesRes=await fetchAllPages("sources/getAll",{Limitation:{Count:1000}},"Sources");const sourcesMap={};sourcesRes.forEach(s=>{sourcesMap[s.Id]=s.Name||""});
 
         state.umsg=`${label}${progress}: apartamentos...`;render();
-        const resourcesRes=await callMewsProxy("resources/getAll",{Limitation:{Count:1000},Extent:{Resources:true,ResourceCategories:true}});const resourcesMap={};const categoriesMap={};(resourcesRes.Resources||[]).forEach(r=>{resourcesMap[r.Id]=r});(resourcesRes.ResourceCategories||[]).forEach(c=>{categoriesMap[c.Id]=c});
+        let resourcesRes;try{resourcesRes=await callMewsProxy("resources/getAll",{Limitation:{Count:1000},Extent:{Resources:true,ResourceCategories:true}})}catch(e){addLog(label+": ResourceCategories not permitted, retrying...");resourcesRes=await callMewsProxy("resources/getAll",{Limitation:{Count:1000},Extent:{Resources:true,ResourceCategories:false}})}const resourcesMap={};const categoriesMap={};(resourcesRes.Resources||[]).forEach(r=>{resourcesMap[r.Id]=r});(resourcesRes.ResourceCategories||[]).forEach(c=>{categoriesMap[c.Id]=c});
 
         state.umsg=`${label}${progress}: reservas...`;render();
         const resvRes=await fetchAllPages("reservations/getAll/2023-06-06",{States:["Confirmed","Started"],TimeFilter:"Start",StartUtc:startUtcRes.toISOString(),EndUtc:endUtcRes.toISOString(),Limitation:{Count:200},Extent:{Reservations:true,BusinessSegments:false}},"Reservations");
