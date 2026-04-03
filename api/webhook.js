@@ -1,6 +1,5 @@
-// Cancellation Shield — Mews Webhook Receiver
-// Receives ServiceOrderUpdated events from Mews
-// For now: logs events. Future: triggers re-fetch.
+// Mews webhook receiver — receives ServiceOrderUpdated events.
+// Currently logs and acknowledges. Future: trigger dashboard refresh.
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -11,18 +10,12 @@ export default async function handler(req, res) {
 
   try {
     const event = req.body || {};
-    const eventType = event.Type || event.Events?.[0]?.Type || "unknown";
-    const enterpriseId = event.EnterpriseId || "unknown";
+    const type = event.Type || event.Events?.[0]?.Type || "unknown";
+    const enterprise = event.EnterpriseId || "unknown";
 
-    console.log("[Webhook]", new Date().toISOString(), "type:", eventType, "enterprise:", enterpriseId);
+    console.log("[webhook]", new Date().toISOString(), type, enterprise);
 
-    // Mews expects a 200 response to acknowledge receipt
-    return res.status(200).json({
-      status: "received",
-      type: eventType,
-      enterprise: enterpriseId,
-      timestamp: new Date().toISOString()
-    });
+    return res.status(200).json({ status: "received", type, enterprise });
   } catch (err) {
     console.error("Webhook error:", err);
     return res.status(200).json({ status: "error", message: err.message });
