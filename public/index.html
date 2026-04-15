@@ -488,7 +488,7 @@ body{
 // ─── NAMESPACE ───
 const nexo=(function(){
   // Global state
-  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false,backfilling:false};
+  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false,backfilling:false,lastBackfill:null};
   let data={reservations:[],availability:{},overbooking:[],obMap:{},log:[],calibratedWeights:null,weatherCache:{},serviceId:null,serviceIds:{},propKeyByName:{}};
   let pendingFiles=[];
   let propShorthand={};
@@ -1269,6 +1269,54 @@ const nexo=(function(){
     h+=`</div>`;
     h+=`</div>`;
 
+    // Backfill result panel — always visible if there's a recent backfill,
+    // even before the model is trained. This is critical UX: without it,
+    // the user clicks "Importar" and has no idea what happened.
+    if(state.lastBackfill){
+      const lb=state.lastBackfill;
+      h+=`<div style="border:1px solid var(--ink);background:var(--paper-2);padding:18px 22px;margin-bottom:24px">`;
+      h+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">`;
+      h+=`<div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--accent-ink);text-transform:uppercase;letter-spacing:2px">Último backfill</div>`;
+      h+=`<div style="font-family:Fraunces,serif;font-size:28px;font-weight:500;color:var(--ink)">${lb.totalImported||0}<span style="font-size:13px;color:var(--ink-3);margin-left:6px">reservas importadas</span></div>`;
+      h+=`</div>`;
+      h+=`<table style="width:100%;border-collapse:collapse;font-family:JetBrains Mono,monospace;font-size:10.5px">`;
+      h+=`<tr style="border-bottom:1px solid var(--rule);color:var(--ink-3);text-transform:uppercase;letter-spacing:1px"><th style="text-align:left;padding:6px 8px">Propriedade</th><th style="text-align:right;padding:6px 8px">Mews total</th><th style="text-align:right;padding:6px 8px">Em range</th><th style="text-align:right;padding:6px 8px">Importadas</th><th style="text-align:right;padding:6px 8px">Cancel</th><th style="text-align:right;padding:6px 8px">Stayed</th><th style="text-align:left;padding:6px 8px">Status</th><th style="text-align:right;padding:6px 8px">Tempo</th></tr>`;
+      (lb.properties||[]).forEach(p=>{
+        const statusColor=p.status==="ok"?"var(--green)":p.status==="loading"?"var(--accent-ink)":p.status==="empty"?"var(--orange)":"var(--red)";
+        h+=`<tr style="border-bottom:1px solid var(--rule)">`;
+        h+=`<td style="padding:6px 8px;color:var(--ink)">${esc(p.label||p.key)}</td>`;
+        h+=`<td style="padding:6px 8px;text-align:right;color:var(--ink-2)">${p.fetched_from_mews||"—"}</td>`;
+        h+=`<td style="padding:6px 8px;text-align:right;color:var(--ink-2)">${p.fetched_in_date_range||"—"}</td>`;
+        h+=`<td style="padding:6px 8px;text-align:right;color:var(--ink);font-weight:600">${p.imported||0}</td>`;
+        h+=`<td style="padding:6px 8px;text-align:right;color:var(--red)">${(p.by_outcome||{}).cancelled||0}</td>`;
+        h+=`<td style="padding:6px 8px;text-align:right;color:var(--green)">${(p.by_outcome||{}).stayed||0}</td>`;
+        h+=`<td style="padding:6px 8px;color:${statusColor};text-transform:uppercase;letter-spacing:.5px">${esc(p.status||"?")}${p.message?` · ${esc(String(p.message).slice(0,40))}`:""}</td>`;
+        h+=`<td style="padding:6px 8px;text-align:right;color:var(--ink-3)">${p.duration_ms?Math.round(p.duration_ms/1000)+"s":"—"}</td>`;
+        h+=`</tr>`;
+        // Debug row for empty results
+        if(p.status==="empty"&&p.debug){
+          h+=`<tr style="background:var(--paper)"><td colspan="8" style="padding:4px 12px;font-size:10px;color:var(--ink-3);font-style:italic">debug: total fetched ${p.debug.total_fetched_from_mews}, range [${p.debug.date_filter_start}, ${p.debug.date_filter_end}]`;
+          if(p.debug.sample_state_counts)h+=`, states ${JSON.stringify(p.debug.sample_state_counts)}`;
+          if(p.debug.sample_earliest_created)h+=`, earliest ${(p.debug.sample_earliest_created||"").slice(0,10)}, latest ${(p.debug.sample_latest_created||"").slice(0,10)}`;
+          h+=`</td></tr>`;
+        }
+      });
+      h+=`</table>`;
+      // Train result
+      if(lb.trainResult){
+        const tr=lb.trainResult;
+        h+=`<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--rule);font-family:JetBrains Mono,monospace;font-size:11px">`;
+        if(tr.status==="ok"){
+          h+=`<span style="color:var(--green);font-weight:600">TRAIN OK</span>`;
+          h+=` · AUC ${tr.metrics?.auc?.toFixed(4)||"?"} · Brier ${tr.metrics?.brier?.toFixed(4)||"?"} · ${tr.promoted?"<span style='color:var(--accent-ink);font-weight:600'>PROMOVIDO</span>":"<span style='color:var(--ink-3)'>não promovido</span>"} · ${tr.samples_train||0}/${tr.samples_test||0} samples`;
+        }else{
+          h+=`<span style="color:var(--orange)">TRAIN ${esc(tr.status||"?")}</span> · ${esc(tr.reason||tr.error||"")}`;
+        }
+        h+=`</div>`;
+      }
+      h+=`</div>`;
+    }
+
     if(state.modelLoading){
       h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">A CARREGAR MÉTRICAS...</div>`;
       h+=`</div>`;
@@ -1276,7 +1324,7 @@ const nexo=(function(){
     }
 
     if(!m){
-      h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">SEM DADOS — CLICA EM \"FORÇAR RETREINO\" OU AGUARDA O CRON NOTURNO (04:30 UTC)</div>`;
+      h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">SEM MODELO TREINADO — IMPORTA HISTÓRICO OU CLICA EM FORÇAR RETREINO</div>`;
       h+=`</div>`;
       return h;
     }
@@ -1396,8 +1444,10 @@ const nexo=(function(){
 
   async function backfillHistory(){
     if(state.backfilling)return;
-    if(!confirm("Importar histórico da Mews?\n\nVai puxar reservas Processed e Canceled desde 2025-01-01 das 4 propriedades, UMA DE CADA VEZ (para não dar timeout no serverless). Cada propriedade leva ~30-60 segundos. Depois treina o modelo automaticamente."))return;
-    state.backfilling=true;render();
+    if(!confirm("Importar histórico da Mews?\n\nVai puxar reservas Processed e Canceled desde 2025-01-01 das 4 propriedades, UMA DE CADA VEZ. Cada propriedade leva ~30-60 segundos. Depois treina o modelo automaticamente."))return;
+    state.backfilling=true;
+    state.lastBackfill={startedAt:new Date().toISOString(),properties:[],totalImported:0,trainResult:null};
+    render();
     const propKeys=["alegria","hq","sbi","sbii"];
     const propLabels={alegria:"Alegria",hq:"HQ Portfolio",sbi:"Santa Barbara I",sbii:"Santa Barbara II"};
     let totalImported=0;
@@ -1406,46 +1456,63 @@ const nexo=(function(){
         const key=propKeys[i];
         state.umsg=`A importar ${propLabels[key]} (${i+1}/${propKeys.length})...`;
         render();
-        addLog(`Backfill ${propLabels[key]}: a começar...`);
+        const t0=Date.now();
+        let entry={key,label:propLabels[key],status:"loading"};
+        state.lastBackfill.properties.push(entry);
         try{
           const resp=await fetch("/api/backfill",{
             method:"POST",
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify({property:key,startDate:"2025-01-01"})
           });
-          const result=await resp.json().catch(()=>({}));
-          if(!resp.ok){
-            addLog(`Backfill ${propLabels[key]}: ERRO ${resp.status} — ${result.message||result.error||"(sem detalhes)"}`);
-            continue;
-          }
-          // When scoped to one property, result.properties[0] has the per-property data
+          const result=await resp.json().catch(()=>({raw:"non-json response"}));
           const p=(result.properties&&result.properties[0])||result;
-          if(p.status==="ok"&&(p.imported||0)>0){
-            const bo=p.by_outcome||{};
-            addLog(`Backfill ${propLabels[key]}: ${p.imported} importadas (${bo.cancelled||0} cancel, ${bo.stayed||0} stayed)`);
-            totalImported+=p.imported;
+          entry.duration_ms=Date.now()-t0;
+          entry.http_status=resp.status;
+          entry.raw=p;
+          if(!resp.ok){
+            entry.status="error";
+            entry.message=result.message||result.error||`HTTP ${resp.status}`;
           }else if(p.status==="skipped"){
-            addLog(`Backfill ${propLabels[key]}: skipped — ${p.reason||"sem token"}`);
+            entry.status="skipped";
+            entry.message=p.reason||"sem token";
+          }else if((p.imported||0)>0){
+            entry.status="ok";
+            entry.imported=p.imported;
+            entry.fetched_from_mews=p.fetched_from_mews;
+            entry.fetched_in_date_range=p.fetched_in_date_range;
+            entry.by_outcome=p.by_outcome||{};
+            totalImported+=p.imported;
           }else{
-            const dbg=p.debug?` probe=${p.debug.probe_without_timefilter}`:"";
-            addLog(`Backfill ${propLabels[key]}: 0 reservas no período${dbg}`);
+            entry.status="empty";
+            entry.message=p.note||"0 reservas";
+            entry.debug=p.debug||null;
           }
+          addLog(`Backfill ${propLabels[key]}: ${entry.status} — imported=${entry.imported||0}`);
         }catch(err){
-          addLog(`Backfill ${propLabels[key]}: falhou — ${err.message}`);
+          entry.status="error";
+          entry.message=err.message;
+          entry.duration_ms=Date.now()-t0;
+          addLog(`Backfill ${propLabels[key]}: ERRO — ${err.message}`);
         }
+        // Trigger re-render so the partial results appear in the UI
+        render();
       }
+      state.lastBackfill.totalImported=totalImported;
+      state.lastBackfill.finishedAt=new Date().toISOString();
       addLog(`Backfill total: ${totalImported} reservas importadas`);
       if(totalImported>100){
-        addLog("A treinar modelo inicial com dados históricos...");
+        addLog("A treinar modelo inicial...");
         state.umsg="A treinar modelo...";render();
-        await retrainModelSilent();
+        const tr=await retrainModelSilent();
+        state.lastBackfill.trainResult=tr;
       }else{
-        addLog("Insuficiente para treinar — precisa >100 outcomes");
+        state.lastBackfill.trainResult={status:"skipped",reason:"<100 outcomes imported"};
       }
       await loadModelMetrics();
     }catch(e){
       addLog("Backfill falhou: "+e.message);
-      alert("Backfill falhou: "+e.message);
+      state.lastBackfill.error=e.message;
     }finally{
       state.backfilling=false;state.umsg="";render();
     }
@@ -1460,8 +1527,10 @@ const nexo=(function(){
       }else{
         addLog("Treino: "+(result.reason||result.status));
       }
+      return result;
     }catch(e){
       addLog("Treino silencioso falhou: "+e.message);
+      return {status:"error",error:e.message};
     }
   }
 
