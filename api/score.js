@@ -1,8 +1,10 @@
 // nexo — cancellation risk scoring (backend)
-// Moved from public/index.html as part of PR 1: backend-scoring.
-// This is a pure refactoring — the algorithm is byte-identical to the
-// previous client-side version. Future PRs will replace hand-tuned weights
-// with model coefficients trained from Mews cancellation history.
+// PR 1: moved from public/index.html. Algorithm byte-identical.
+// PR 2: every score call now upserts a row into the `predictions` table
+//       on Supabase so the model can later learn from real outcomes.
+//       Journal writes are fail-open: a DB outage does NOT break scoring.
+
+import { safeInsert, getServerClient } from "../lib/supabase.js";
 
 // ─── CONSTANTS ───
 const BDC_MO = {
@@ -338,7 +340,7 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
-  const { reservations, weights } = req.body || {};
+  const { reservations, weights, persist = true } = req.body || {};
   if (!Array.isArray(reservations)) {
     return res.status(400).json({ error: "Missing or invalid reservations array" });
   }
@@ -346,15 +348,71 @@ export default async function handler(req, res) {
     return res.status(413).json({ error: "Too many reservations in one call (max 5000)" });
   }
 
+  // Determine model version — try to load learned weights, fall back
+  // to hand-tuned. PR 3 will populate model_weights with trained coefs.
+  let activeWeights = weights || null;
+  let modelVersion = "hand-tuned-v1";
+  if (!activeWeights) {
+    try {
+      const sb = getServerClient();
+      const { data: row } = await sb
+        .from("model_weights")
+        .select("version, coefs")
+        .eq("is_active", true)
+        .maybeSingle();
+      if (row) {
+        activeWeights = row.coefs;
+        modelVersion = row.version;
+      }
+    } catch (err) {
+      // fall through with hand-tuned — don't fail the request
+      console.warn("[score] model_weights load failed:", err.message);
+    }
+  }
+
   try {
     const results = reservations.map(r => {
-      const risk = computeRisk(r, weights);
+      const risk = computeRisk(r, activeWeights);
       return { id: r.id, ...risk };
     });
+
+    // Journal the predictions. Fail-open: any DB error is logged but
+    // never surfaces to the client — scoring must keep working even
+    // if Supabase is down.
+    if (persist) {
+      const rows = reservations.map((r, i) => {
+        const out = results[i];
+        return {
+          reservation_id: r.id,
+          prop: r.prop || null,
+          snapshot_date: new Date().toISOString().slice(0, 10),
+          features: r,
+          model_version: modelVersion,
+          score: out.score,
+          level: out.level,
+          override: out.override || null,
+          predicted_prob: out.prob / 100  // store as 0..1 float, not 0..100 int
+        };
+      });
+      // Use upsert on the unique (reservation_id, snapshot_date) constraint
+      try {
+        const sb = getServerClient();
+        const { error } = await sb
+          .from("predictions")
+          .upsert(rows, { onConflict: "reservation_id,snapshot_date" });
+        if (error) {
+          console.error("[score] journal upsert error:", error.message);
+        }
+      } catch (err) {
+        console.error("[score] journal exception:", err.message);
+      }
+    }
+
     return res.status(200).json({
       results,
-      model_version: "hand-tuned-v1",
-      scored_at: new Date().toISOString()
+      model_version: modelVersion,
+      scored_at: new Date().toISOString(),
+      journaled: persist
     });
   } catch (err) {
     console.error("[score] error:", err.message);
