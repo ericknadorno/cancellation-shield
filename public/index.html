@@ -488,7 +488,7 @@ body{
 // ─── NAMESPACE ───
 const nexo=(function(){
   // Global state
-  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false};
+  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false,backfilling:false};
   let data={reservations:[],availability:{},overbooking:[],obMap:{},log:[],calibratedWeights:null,weatherCache:{},serviceId:null,serviceIds:{},propKeyByName:{}};
   let pendingFiles=[];
   let propShorthand={};
@@ -1263,7 +1263,10 @@ const nexo=(function(){
     // Title + retrain button
     h+=`<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;padding-bottom:14px;border-bottom:1px solid var(--ink)">`;
     h+=`<div><div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--accent-ink);margin-bottom:4px">MODEL DASHBOARD</div><h2 style="font-family:Fraunces,serif;font-size:34px;font-weight:500;color:var(--ink);letter-spacing:-1px;line-height:.95">Estado do modelo</h2></div>`;
+    h+=`<div style="display:flex;gap:8px">`;
+    h+=`<button class="btn" data-action="backfill" ${state.backfilling?"disabled":""} style="padding:8px 16px">${state.backfilling?"A importar...":"Importar histórico Mews"}</button>`;
     h+=`<button class="btn api" data-action="retrain" ${state.retraining?"disabled":""} style="padding:8px 16px">${state.retraining?"A treinar...":"Forçar retreino"}</button>`;
+    h+=`</div>`;
     h+=`</div>`;
 
     if(state.modelLoading){
@@ -1391,11 +1394,63 @@ const nexo=(function(){
     }
   }
 
+  async function backfillHistory(){
+    if(state.backfilling)return;
+    if(!confirm("Importar histórico da Mews?\n\nVai puxar todas as reservas (Processed, Canceled, NoShow) de 2025-01-01 até ontem das 4 propriedades. Pode demorar 1-3 minutos por propriedade. Após importar, o modelo treina automaticamente com os dados reais do Haus Group."))return;
+    state.backfilling=true;state.umsg="A importar histórico Mews — pode demorar uns minutos...";render();
+    try{
+      const resp=await fetch("/api/backfill",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({startDate:"2025-01-01"})
+      });
+      const result=await resp.json().catch(()=>({}));
+      if(!resp.ok){
+        throw new Error(result.message||result.error||("HTTP "+resp.status));
+      }
+      const total=result.total_imported||0;
+      addLog(`Backfill: ${total} reservas importadas em ${((result.duration_ms||0)/1000).toFixed(0)}s`);
+      (result.properties||[]).forEach(p=>{
+        if(p.status==="ok"){
+          const bo=p.by_outcome||{};
+          addLog(`  ${p.property_name||p.property}: ${p.imported} (${bo.cancelled||0} cancel, ${bo.stayed||0} stayed, ${bo.no_show||0} noshow)`);
+        }else{
+          addLog(`  ${p.property}: ${p.status} ${p.reason||p.message||""}`);
+        }
+      });
+      if(total>100){
+        addLog("A treinar modelo inicial com os dados históricos...");
+        state.umsg="A treinar modelo com histórico...";render();
+        await retrainModelSilent();
+      }
+      await loadModelMetrics();
+    }catch(e){
+      addLog("Backfill falhou: "+e.message);
+      alert("Backfill falhou: "+e.message);
+    }finally{
+      state.backfilling=false;state.umsg="";render();
+    }
+  }
+
+  async function retrainModelSilent(){
+    try{
+      const resp=await fetch("/api/model",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+      const result=await resp.json().catch(()=>({}));
+      if(result.status==="ok"){
+        addLog(`Modelo: ${result.metrics?.auc?.toFixed(4)||"?"} AUC, ${result.promoted?"PROMOVIDO":"não promovido"} (amostras: ${result.samples_train}/${result.samples_test})`);
+      }else{
+        addLog("Treino: "+(result.reason||result.status));
+      }
+    }catch(e){
+      addLog("Treino silencioso falhou: "+e.message);
+    }
+  }
+
   // ─── PUBLIC API ───
   return{
     render,fetchFromMews,scoreAndProcessReservations,
     addNote,addTask,addNoteById,addTaskById,openForSale,bulkAddNotes,bulkAddTasks,generateWeeklyReport,
-    loadModelMetrics,retrainModel,
+    loadModelMetrics,retrainModel,backfillHistory,
     selectProperty:p=>{state.prop=p;state.sel=null;render()},
     selectTab:t=>{state.tab=t;if(t==="modelo"&&!state.modelMetrics&&!state.modelLoading)loadModelMetrics();else render()},
     setViewDays:d=>{state.viewDays=d;render()},
@@ -1418,6 +1473,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     else if(action==='add-note')nexo.addNoteById(el.dataset.resvId);
     else if(action==='add-task')nexo.addTaskById(el.dataset.resvId);
     else if(action==='retrain')nexo.retrainModel();
+    else if(action==='backfill')nexo.backfillHistory();
   });
 });
 </script>
