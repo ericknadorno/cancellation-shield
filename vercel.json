@@ -3,11 +3,13 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/outcomes", "schedule": "0 4 * * *" }
+    { "path": "/api/outcomes", "schedule": "0 4 * * *" },
+    { "path": "/api/train",    "schedule": "30 4 * * *" }
   ],
   "functions": {
     "api/outcomes.js": { "maxDuration": 60 },
-    "api/score.js": { "maxDuration": 30 },
-    "api/mews.js": { "maxDuration": 30 }
+    "api/train.js":    { "maxDuration": 60 },
+    "api/score.js":    { "maxDuration": 30 },
+    "api/mews.js":     { "maxDuration": 30 }
   }
 }
