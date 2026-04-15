@@ -13,6 +13,7 @@
 //   same payload as /api/train. Used by the "Forçar retreino" button in UI.
 
 import { getServerClient } from "../lib/supabase.js";
+import { applyCors } from "../lib/cors.js";
 import trainHandler from "./train.js";
 
 async function gatherDashboardData(sb) {
@@ -168,26 +169,10 @@ async function gatherDashboardData(sb) {
 }
 
 export default async function handler(req, res) {
-  // CORS
-  const origin = req.headers.origin || "";
-  const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
-  const isProd = process.env.VERCEL_ENV === "production";
-  if (isProd && ALLOWED_ORIGINS.length === 0) {
-    return res.status(500).json({ error: "Server misconfiguration: CORS unset" });
-  }
-  if (ALLOWED_ORIGINS.length > 0) {
-    if (!ALLOWED_ORIGINS.includes(origin)) {
-      return res.status(403).json({ error: "Origin not allowed" });
-    }
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", origin || "*");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
+  // Use the shared CORS helper. Inline block had a same-origin bug
+  // (empty Origin header rejected with 403) that blocked the Modelo
+  // tab from loading metrics in production.
+  if (!applyCors(req, res, { methods: "GET, POST, OPTIONS" })) return;
 
   try {
     if (req.method === "GET") {
