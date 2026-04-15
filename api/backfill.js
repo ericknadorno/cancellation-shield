@@ -122,7 +122,15 @@ function mapReservation(res, ctx, enterpriseName) {
   const adr = nights > 0 ? Math.round(totalAmount / nights) : 0;
 
   const notes = res.Notes || "";
-  const paymentStatus = ctx.paymentsMap[res.AccountId] || "";
+  // We deliberately do NOT fetch historical payment state during backfill:
+  //   1. It's the biggest SBII 504 offender (50-row batches × many accounts).
+  //   2. It's a post-hoc leak — paymentStatus flips to "fail" the moment a
+  //      cancellation voids the charge, which gave us the perfect-AUC false
+  //      positive in prod. train_gbm.py / api/train.js both exclude `pay`
+  //      from LEAK_SAFE_FEATURE_NAMES now, so nothing downstream needs it.
+  // Leaving it empty here makes the backfill rows score_payment() == 45
+  // (the "unknown" bucket), which is harmless because `pay` isn't learned.
+  const paymentStatus = "";
   const hasCreditCard = !!res.CreditCardId;
 
   const createdMs = cre ? cre.getTime() : 0;
@@ -318,26 +326,11 @@ async function importProperty(propKey, startDate, endDate) {
     }
   }
 
-  // 5. Pull payments
-  const paymentsMap = {};
-  for (let i = 0; i < accountIds.length; i += 50) {
-    const batch = accountIds.slice(i, i + 50);
-    try {
-      const r = await callMews(
-        "payments/getAll",
-        { AccountIds: batch, Limitation: { Count: 500 } },
-        accessToken
-      );
-      (r.Payments || []).forEach(p => {
-        const aid = p.AccountId;
-        const state = (p.State || "").toLowerCase();
-        if (state === "charged" || state === "paid") paymentsMap[aid] = "charged";
-        else if (!paymentsMap[aid]) paymentsMap[aid] = state;
-      });
-    } catch (err) {
-      console.warn(`[backfill] ${propKey}: payments batch ${i} failed:`, err.message);
-    }
-  }
+  // 5. (Intentionally removed) payments fetch.
+  //    We used to call payments/getAll here in 50-row batches, but it was
+  //    the primary cause of the Santa Barbara II 504 timeout on Vercel's
+  //    Hobby tier (60s maxDuration) AND it fed the leaky `pay` feature.
+  //    See mapReservation's paymentStatus comment for the full story.
 
   // 6. Build per-account history from the same dataset (fast: we already
   // have all terminal reservations in memory)
@@ -350,7 +343,7 @@ async function importProperty(propKey, startDate, endDate) {
     if (r.State === "Canceled" || r.State === "Cancelled") cancelHistoryMap[aid].cancels++;
   }
 
-  const ctx = { ratesMap, sourcesMap, customersMap, itemsMap, paymentsMap, cancelHistoryMap };
+  const ctx = { ratesMap, sourcesMap, customersMap, itemsMap, cancelHistoryMap };
 
   // 7. Map each reservation, build upsert rows
   const rows = [];

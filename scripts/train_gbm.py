@@ -27,7 +27,18 @@ import lightgbm as lgb
 from sklearn.metrics import roc_auc_score, brier_score_loss, log_loss
 from supabase import create_client, Client
 
-from features import FEATURE_NAMES, extract_feature_vector, to_numeric_array
+from features import (
+    FEATURE_NAMES,
+    LEAK_SAFE_FEATURE_NAMES,
+    extract_feature_vector,
+)
+
+# Features actually fed to LightGBM. We train on the leak-safe subset (see
+# features.py) so the booster cannot cheat using pay/mod/modCount, which get
+# mutated by the cancellation event itself. Inference in lib/gbm.js reads the
+# model's own feature_names list, so it will correctly build a 24-long vector
+# at predict time and ignore the three leaky ones.
+TRAIN_FEATURE_NAMES = LEAK_SAFE_FEATURE_NAMES
 
 # ─── CONFIG ───
 MIN_SAMPLES = 300              # below this we refuse to train
@@ -106,13 +117,16 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
             continue
         try:
             fv = extract_feature_vector(features)
-            X.append(to_numeric_array(fv))
+            # Only the leak-safe features go into the training matrix.
+            X.append([fv[name] for name in TRAIN_FEATURE_NAMES])
             y.append(label)
         except Exception as e:
             log(f"  skip row: {e}")
             skipped += 1
 
-    log(f"Built matrix: {len(X)} samples, {skipped} skipped")
+    log(f"Built matrix: {len(X)} samples, {skipped} skipped "
+        f"({len(TRAIN_FEATURE_NAMES)} leak-safe features / "
+        f"{len(FEATURE_NAMES)} total scorers)")
     return X, y
 
 
@@ -259,8 +273,8 @@ def main() -> int:
     X_tr, y_tr, X_te, y_te = seeded_split(X, y, TEST_FRACTION, RANDOM_SEED)
     log(f"Split: {len(X_tr)} train / {len(X_te)} test")
 
-    train_set = lgb.Dataset(X_tr, y_tr, feature_name=FEATURE_NAMES, free_raw_data=False)
-    valid_set = lgb.Dataset(X_te, y_te, feature_name=FEATURE_NAMES, reference=train_set, free_raw_data=False)
+    train_set = lgb.Dataset(X_tr, y_tr, feature_name=TRAIN_FEATURE_NAMES, free_raw_data=False)
+    valid_set = lgb.Dataset(X_te, y_te, feature_name=TRAIN_FEATURE_NAMES, reference=train_set, free_raw_data=False)
 
     log("Training LightGBM...")
     booster = lgb.train(
@@ -290,8 +304,10 @@ def main() -> int:
     short_hash = hashlib.sha256(f"{today}{auc:.4f}".encode()).hexdigest()[:6]
     version = f"gbm-{today}-{short_hash}"
 
-    # Build export and upsert
-    model_json = export_model(booster, FEATURE_NAMES, {
+    # Build export and upsert. The model's feature_names is the leak-safe
+    # subset — lib/gbm.js builds its input vector from whatever list it sees
+    # here, so the JS inferencer automatically skips pay/mod/modCount too.
+    model_json = export_model(booster, TRAIN_FEATURE_NAMES, {
         "auc": auc, "brier": brier, "log_loss": ll, "calibration_error": ece,
     }, len(X_tr))
 
@@ -301,7 +317,7 @@ def main() -> int:
     row = {
         "version": version,
         "coefs": model_json,  # jsonb — whole tree structure goes here
-        "feature_names": FEATURE_NAMES,
+        "feature_names": TRAIN_FEATURE_NAMES,
         "training_samples": len(X_tr),
         "training_window_start": window_start_date,
         "training_window_end": today_date,

@@ -36,6 +36,18 @@ FEATURE_NAMES = [
     "isRelay", "isGenius", "lateArrival"
 ]
 
+# Leak-safe subset used for TRAINING only. Mirrors LEAK_SAFE_FEATURE_NAMES in
+# lib/features.js. Excludes features whose values are set (or drastically
+# shifted) by the very act of cancelling:
+#
+#   pay      — paymentStatus flips to "fail" after cancellation voids charges.
+#   mod      — wasModified. A cancellation IS a modification.
+#   modCount — modificationCount. Same root cause.
+#
+# Inference still uses the full 27-feature vector — only training is leak-safe.
+_LEAK_FEATURES = {"pay", "mod", "modCount"}
+LEAK_SAFE_FEATURE_NAMES = [n for n in FEATURE_NAMES if n not in _LEAK_FEATURES]
+
 
 # ─── SCORERS ───
 def is_non_refundable(rate: str) -> bool:

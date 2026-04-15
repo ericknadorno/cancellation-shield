@@ -15,7 +15,18 @@
 //   8. Writes a snapshot into `model_performance` regardless of promotion
 
 import { getServerClient } from "../lib/supabase.js";
-import { FEATURE_NAMES, extractFeatureVector } from "../lib/features.js";
+import {
+  LEAK_SAFE_FEATURE_NAMES,
+  extractFeatureVector
+} from "../lib/features.js";
+
+// Train on the leak-safe subset only. pay/mod/modCount are post-hoc — they
+// flip the moment the cancellation event happens, so letting the learner see
+// them yields a trivially perfect holdout AUC and a useless live model.
+// Inference (scoreLearned in api/score.js) iterates FEATURE_NAMES and skips
+// any key not present in coefs, so the full 27-feature vector still flows
+// through the UI — the model just can't cheat with the leaky three.
+const TRAIN_FEATURE_NAMES = LEAK_SAFE_FEATURE_NAMES;
 import {
   fitLogistic,
   predictProb,
@@ -99,7 +110,8 @@ export default async function handler(req, res) {
       const label = labelFromOutcome(row.outcome);
       if (label === null) { skipped++; continue; }
       const fv = extractFeatureVector(row.features || {});
-      const xi = FEATURE_NAMES.map(k => fv[k] ?? 0);
+      // Only the leak-safe columns go into the training matrix.
+      const xi = TRAIN_FEATURE_NAMES.map(k => fv[k] ?? 0);
       X.push(xi);
       y.push(label);
       if (label === 1) pos++; else neg++;
@@ -144,8 +156,11 @@ export default async function handler(req, res) {
     const shouldPromote = newAUC >= currentAUC + AUC_IMPROVEMENT_THRESHOLD;
 
     // ─── 7. Build coefs object ───
+    // coefs[key] is only set for the features that actually entered training.
+    // scoreLearned in api/score.js walks FEATURE_NAMES and skips keys missing
+    // here, so pay/mod/modCount contribute 0 to the logit — no leakage.
     const coefs = { intercept: beta[0] };
-    FEATURE_NAMES.forEach((name, i) => {
+    TRAIN_FEATURE_NAMES.forEach((name, i) => {
       coefs[name] = beta[i + 1];
     });
 
@@ -154,11 +169,12 @@ export default async function handler(req, res) {
     const shortHash = Math.random().toString(36).slice(2, 8);
     const version = `learned-${today}-${shortHash}`;
 
-    // Insert new weights row
+    // Insert new weights row. feature_names records the leak-safe subset so
+    // downstream consumers know which columns were actually learned.
     const newRow = {
       version,
       coefs,
-      feature_names: FEATURE_NAMES,
+      feature_names: TRAIN_FEATURE_NAMES,
       training_samples: Xtr.length,
       training_window_start: windowStart.toISOString().slice(0, 10),
       training_window_end: new Date().toISOString().slice(0, 10),
