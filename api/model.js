@@ -83,12 +83,21 @@ async function gatherDashboardData(sb) {
   // Shows the most recent predictions where the outcome is known so staff
   // can audit the model: did it say 80% and actually cancel? Did it say
   // 5% and actually stay? This is the feedback loop made visible.
+  //
+  // CRITICAL: exclude backfill rows (model_version='backfill-v1'). Those
+  // are historical reservations ingested from Mews with outcome already
+  // known — they have predicted_prob=0 as a placeholder because no real
+  // prediction was ever made. Including them poisons the accuracy stats:
+  // every cancelled backfill row becomes a false negative and every stayed
+  // row becomes a trivial true negative, masking the model's true
+  // performance.
   let recentClosed = [];
   try {
     const { data: rc } = await sb
       .from("predictions")
       .select("reservation_id, prop, snapshot_date, features, predicted_prob, score, level, model_version, outcome, outcome_final_at")
       .not("outcome", "is", null)
+      .neq("model_version", "backfill-v1")
       .order("outcome_final_at", { ascending: false })
       .limit(50);
     recentClosed = (rc || []).map(r => ({
@@ -111,12 +120,14 @@ async function gatherDashboardData(sb) {
 
   // Aggregate accuracy / precision / recall on the last 500 closed
   // predictions — populates the "Como estou a acertar?" headline KPIs.
+  // Same backfill exclusion as recentClosed above — see comment there.
   let accuracyStats = null;
   try {
     const { data: agg } = await sb
       .from("predictions")
       .select("predicted_prob, outcome")
       .not("outcome", "is", null)
+      .neq("model_version", "backfill-v1")
       .order("outcome_final_at", { ascending: false })
       .limit(500);
     if (agg && agg.length > 0) {

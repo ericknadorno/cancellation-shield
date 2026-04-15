@@ -1496,14 +1496,22 @@ const nexo=(function(){
     h+=`<div style="border:1px solid var(--ink);padding:16px;background:var(--paper)"><div style="font-family:Fraunces,serif;font-size:14px;font-weight:500;margin-bottom:8px">Feature importances</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-bottom:12px">Coeficientes do modelo activo · vermelho = aumenta risco · verde = reduz</div>${renderFeatureImportances(m.feature_importances)}</div>`;
     h+=`</div>`;
 
-    // Retrospective — "Como estou a acertar?" + table of recent closed predictions
-    if(m.accuracy_stats||(m.recent_closed&&m.recent_closed.length>0)){
-      const as=m.accuracy_stats;
-      h+=`<div style="border:1px solid var(--ink);background:var(--paper);padding:20px;margin-bottom:28px">`;
-      h+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--rule)">`;
-      h+=`<div><div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--accent-ink)">RETROSPECTIVE</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);margin-top:2px">Como é que o modelo tem andado a acertar</div></div>`;
-      if(as)h+=`<div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3)">${as.sample} predições fechadas</div>`;
-      h+=`</div>`;
+    // Retrospective — "Como estou a acertar?"
+    // Only counts predictions made by /api/score in production (via
+    // fetchFromMews). Backfill rows are filtered out on the server side
+    // because they have predicted_prob=0 as a placeholder and aren't
+    // real predictions. This section shows an explanatory empty state
+    // during the first weeks of use until live predictions start closing.
+    const as=m.accuracy_stats;
+    const hasRetroData=as||(m.recent_closed&&m.recent_closed.length>0);
+    h+=`<div style="border:1px solid var(--ink);background:var(--paper);padding:20px;margin-bottom:28px">`;
+    h+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--rule)">`;
+    h+=`<div><div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--accent-ink)">RETROSPECTIVE</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);margin-top:2px">Como é que o modelo tem andado a acertar</div></div>`;
+    if(as)h+=`<div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3)">${as.sample} predições reais fechadas</div>`;
+    h+=`</div>`;
+    if(!hasRetroData){
+      h+=`<div style="padding:40px 20px;text-align:center"><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--ink-3);letter-spacing:1.4px;text-transform:uppercase;margin-bottom:10px">SEM PREDIÇÕES REAIS FECHADAS AINDA</div><div style="font-family:Inter Tight,sans-serif;font-size:13px;color:var(--ink-2);max-width:540px;margin:0 auto;line-height:1.55">Esta tabela só mostra predições que o modelo fez em produção (via "Carregar dados") e cujo outcome já foi observado pelo cron noturno. As linhas de backfill histórico não contam porque não são predições reais — são dados de treino com outcomes conhecidos.</div></div>`;
+    }else{
       if(as){
         h+=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--rule);margin-bottom:20px">`;
         const kpiStyle="padding:16px 20px;border-right:1px solid var(--rule)";
@@ -1535,8 +1543,8 @@ const nexo=(function(){
         });
         h+=`</table></div>`;
       }
-      h+=`</div>`;
     }
+    h+=`</div>`;
 
     h+=`</div>`;
     return h;
