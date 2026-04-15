@@ -628,14 +628,18 @@ const nexo=(function(){
     try{
       const now=new Date();const startUtcRes=new Date(now);startUtcRes.setDate(startUtcRes.getDate()-7);const endUtcRes=new Date(now);endUtcRes.setDate(endUtcRes.getDate()+90);const startUtcAvail=new Date(now);const endUtcAvail=new Date(now);endUtcAvail.setDate(endUtcAvail.getDate()+90);
 
-      // Discover configured properties
-      const props=await discoverProperties();
+      // Discover configured properties.
+      // HQ is a portfolio account that aggregates everything else — we skip it
+      // everywhere because it creates duplicate data, confuses the property
+      // filter, and times out on backfill due to its size.
+      const discovered=await discoverProperties();
+      const props=discovered.filter(p=>p!=="hq");
       if(props.length===0){
         // Fallback: single property (legacy mode)
         props.push(null);
         addLog("Nenhuma propriedade multi configurada, usando token padrão");
       }
-      const propNames={hq:"HQ Portfolio",alegria:"Alegria",sbi:"Santa Barbara I",sbii:"Santa Barbara II"};
+      const propNames={alegria:"Alegria",sbi:"Santa Barbara I",sbii:"Santa Barbara II"};
       let allMapped=[];let totalResv=0;
 
       for(let pi=0;pi<props.length;pi++){
@@ -771,7 +775,70 @@ const nexo=(function(){
     state.uping=false;
     state.umsg="";
     pendingFiles=[];
+    saveCacheToLocalStorage();
     render();
+  }
+
+  // ─── CACHE PERSISTENTE (localStorage) ───
+  // Persiste o último fetch Mews para que recarregar a página não obrigue
+  // a importar tudo outra vez. TTL de 60 minutos; após isso mostra-se
+  // um banner a pedir refresh. A serialização strip fields pesados e só
+  // inclui o essencial para o dashboard renderizar.
+  const CACHE_KEY="nexo.cache.v1";
+  const CACHE_TTL_MS=60*60*1000; // 60 minutos
+
+  function saveCacheToLocalStorage(){
+    try{
+      const slim={
+        reservations:data.reservations,
+        availability:data.availability,
+        overbooking:data.overbooking,
+        obMap:data.obMap,
+        generated:data.generated,
+        serviceId:data.serviceId,
+        serviceIds:data.serviceIds,
+        propKeyByName:data.propKeyByName,
+        cachedAt:Date.now()
+      };
+      localStorage.setItem(CACHE_KEY,JSON.stringify(slim));
+    }catch(e){
+      console.warn("nexo cache save falhou:",e.message);
+    }
+  }
+
+  function loadCacheFromLocalStorage(){
+    try{
+      const raw=localStorage.getItem(CACHE_KEY);
+      if(!raw)return null;
+      const cached=JSON.parse(raw);
+      if(!cached||!cached.cachedAt)return null;
+      const age=Date.now()-cached.cachedAt;
+      if(age>CACHE_TTL_MS*24)return null; // limite duro 24h — depois disso nunca usar
+      return cached;
+    }catch(e){
+      return null;
+    }
+  }
+
+  function clearCache(){
+    try{localStorage.removeItem(CACHE_KEY)}catch(e){}
+  }
+
+  function restoreFromCache(){
+    const cached=loadCacheFromLocalStorage();
+    if(!cached)return false;
+    data.reservations=cached.reservations||[];
+    data.availability=cached.availability||{};
+    data.overbooking=cached.overbooking||[];
+    data.obMap=cached.obMap||{};
+    data.generated=cached.generated;
+    data.serviceId=cached.serviceId;
+    data.serviceIds=cached.serviceIds||{};
+    data.propKeyByName=cached.propKeyByName||{};
+    data.cachedAt=cached.cachedAt;
+    buildPropertyShorthand(data.reservations);
+    state.phase="dashboard";
+    return true;
   }
 
   function computeOverbooking(scored,availData){
@@ -1014,6 +1081,12 @@ const nexo=(function(){
 
     // Status
     if(state.umsg)h+=`<div class="status-bar"><div class="dot" style="background:${state.uping?"#FF9500":"#34C759"}"></div>${esc(state.umsg)}</div>`;
+    else if(data.cachedAt){
+      const ageMin=Math.floor((Date.now()-data.cachedAt)/60000);
+      const ageText=ageMin<1?"agora":ageMin<60?`há ${ageMin} min`:`há ${Math.floor(ageMin/60)}h ${ageMin%60}min`;
+      const isStale=ageMin>60;
+      h+=`<div class="status-bar"><div class="dot" style="background:${isStale?"#E8811E":"#0E8A40"};animation:none"></div>Dados em cache ${ageText}${isStale?" — considera atualizar":""} · <button data-action="clear-cache" style="background:0;border:0;color:var(--accent-ink);font-family:inherit;font-size:inherit;cursor:pointer;text-decoration:underline;padding:0">limpar cache</button></div>`;
+    }
 
     // KPIs — editorial numerals
     h+=`<div class="kpis">`;
@@ -1092,26 +1165,81 @@ const nexo=(function(){
   }
 
   function renderOverbooking(ob,obRev){
-    let h=`<div class="tbl">`;
-    if(!ob.length){h+=`<div style="padding:60px;text-align:center"><div style="font-size:40px;margin-bottom:12px">✓</div><div style="font-size:16px;font-weight:900;color:#000;margin-bottom:6px">Sem oportunidades de overbooking</div><div style="font-size:13px;color:#86868B">Neste momento não há dias com reservas de alto risco suficientes.</div></div>`}else{
-      const obByProp={};ob.forEach(o=>{if(!obByProp[o.prop])obByProp[o.prop]={nights:0,rev:0};obByProp[o.prop].nights+=o.ob;obByProp[o.prop].rev+=o.ob*o.avgRate});
-      h+=`<div style="display:grid;grid-template-columns:repeat(${Math.min(properties.length,4)},1fr);gap:12px;margin-bottom:20px">`;
-      properties.forEach(p=>{const d=obByProp[p]||{nights:0,rev:0};h+=`<div style="background:#fff;border:1px solid ${d.nights>0?"#E8FF5B":"#E5E5EA"};border-radius:12px;padding:16px;text-align:center"><div style="font-size:10px;color:#86868B;font-weight:700;letter-spacing:1px;text-transform:uppercase">${p}</div><div style="font-size:28px;font-weight:900;color:${d.nights>0?"#8B9A00":"#D2D2D7"};margin:4px 0">+${d.nights}</div><div style="font-size:11px;color:#86868B">€${Math.round(d.rev).toLocaleString()} potencial</div></div>`});
-      h+=`</div>`;
-      h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">`;
-      ob.forEach((o,idx)=>{
-        const confColor=o.combinedProb>=70?"#FF3B30":o.combinedProb>=50?"#FF9500":"#000";
-        h+=`<div class="ob-card"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px"><div><div style="font-size:18px;font-weight:900;color:#000">${fmt(o.date)}</div><div style="font-size:12px;color:#86868B;margin-top:2px">${esc(o.dow)} · ${esc(o.prop)}</div></div><div style="text-align:right"><div style="font-size:24px;font-weight:900;color:#8B9A00">+${o.ob}</div><div style="font-size:10px;color:#86868B">quarto${o.ob>1?"s":""}</div></div></div>`;
-        h+=`<div style="display:flex;gap:10px;margin-bottom:12px"><div style="flex:1;background:#F4F5F9;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-size:9px;color:#86868B;font-weight:700;letter-spacing:1px">CONFIANÇA</div><div style="font-size:16px;font-weight:900;color:${confColor}">${o.combinedProb}%</div></div><div style="flex:1;background:#F4F5F9;border-radius:8px;padding:8px 10px;text-align:center"><div style="font-size:9px;color:#86868B;font-weight:700;letter-spacing:1px">RECEITA</div><div style="font-size:16px;font-weight:900;color:#34C759">€${o.avgRate*o.ob}</div></div></div>`;
-        h+=`<div style="font-size:11px;color:#999;margin-bottom:10px"><span style="font-weight:600;color:#000">${esc(o.roomsStr)}</span></div>`;
-        h+=`<button id="ob-btn-${idx}" onclick="nexo.openForSale(${idx})" class="action-btn" style="background:#E8FF5B;color:#000;border-color:#8B9A00;font-size:11px;padding:8px">Abrir à venda (+${o.ob})</button>`;
-        h+=`</div>`
-      });
-      h+=`</div>`;
-      h+=`<div style="margin-top:16px;padding:14px;background:#fff;border-radius:12px;border:1px solid #E5E5EA;display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#86868B">${ob.length} dias · ${ob.reduce((s,o)=>s+o.ob,0)} quartos extra</span><span style="font-size:16px;font-weight:900;color:#8B9A00">€${Math.round(obRev).toLocaleString()} receita potencial</span></div>`
-    }
+    let h=`<div class="tbl" style="max-width:1400px">`;
+
+    // Hero explanation bar — demystifies WHY these recommendations exist
+    h+=`<div style="border:1px solid var(--ink);background:var(--paper-2);padding:18px 22px;margin-bottom:22px">`;
+    h+=`<div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--accent-ink);margin-bottom:6px">OVERBOOKING INTELIGENTE</div>`;
+    h+=`<div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);line-height:1.25;margin-bottom:6px">Quando há ${ob.length||0} dias com várias reservas de alto risco, o nexo sugere abrir quartos extra à venda.</div>`;
+    h+=`<div style="font-family:Inter Tight,sans-serif;font-size:13px;color:var(--ink-3);line-height:1.5">A recomendação é baseada em expected value: quantas reservas é provável cancelarem × o preço médio. Clicar em "Abrir à venda" faz escrita real na Mews — usa só quando tens confiança no valor.</div>`;
     h+=`</div>`;
-    return h
+
+    if(!ob.length){
+      h+=`<div style="padding:80px;text-align:center"><div style="font-family:Fraunces,serif;font-size:36px;font-weight:400;color:var(--ink);letter-spacing:-1px">Sem oportunidades</div><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--ink-3);margin-top:10px;letter-spacing:1px">NENHUM DIA COM RESERVAS DE ALTO RISCO SUFICIENTES</div></div>`;
+      h+=`</div>`;
+      return h;
+    }
+
+    // Per-property summary
+    const obByProp={};
+    ob.forEach(o=>{if(!obByProp[o.prop])obByProp[o.prop]={nights:0,rev:0};obByProp[o.prop].nights+=o.ob;obByProp[o.prop].rev+=o.ob*o.avgRate});
+    h+=`<div style="display:grid;grid-template-columns:repeat(${Math.min(properties.length,4)},1fr);gap:0;border:1px solid var(--ink);margin-bottom:24px">`;
+    properties.forEach((p,i)=>{
+      const d=obByProp[p]||{nights:0,rev:0};
+      const isLast=i===properties.length-1;
+      const border=isLast?"":"border-right:1px solid var(--rule)";
+      h+=`<div style="padding:18px 22px;${border};background:${d.nights>0?"var(--paper-2)":"var(--paper)"}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px">${esc(p)}</div><div style="font-family:Fraunces,serif;font-size:30px;font-weight:500;color:${d.nights>0?"var(--olive)":"var(--ink-4)"};line-height:1">+${d.nights}<span style="font-size:12px;color:var(--ink-3);margin-left:4px">quartos</span></div><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--ink-3);margin-top:4px">€${Math.round(d.rev).toLocaleString("pt")} potencial</div></div>`;
+    });
+    h+=`</div>`;
+
+    // Detailed opportunity cards — full-width so nothing truncates
+    h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">`;
+    ob.forEach((o,idx)=>{
+      const confColor=o.combinedProb>=70?"var(--red)":o.combinedProb>=50?"var(--orange)":"var(--ink-2)";
+      const confLabel=o.combinedProb>=70?"ALTA":o.combinedProb>=50?"MÉDIA":"BAIXA";
+      const hiGuests=(o.hiGuests||[]).slice(0,3);
+      const hiCount=(o.hiGuests||[]).length;
+
+      h+=`<div class="ob-card" style="padding:22px;display:flex;flex-direction:column;gap:14px">`;
+
+      // Header: date + prop + +N
+      h+=`<div style="display:flex;justify-content:space-between;align-items:flex-start">`;
+      h+=`<div><div style="font-family:Fraunces,serif;font-size:26px;font-weight:500;letter-spacing:-.5px;line-height:1">${fmt(o.date)}</div><div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--ink-3);margin-top:4px;text-transform:uppercase;letter-spacing:1px">${esc(o.dow)} · ${esc(o.prop)}</div></div>`;
+      h+=`<div style="text-align:right"><div style="font-family:Fraunces,serif;font-size:42px;font-weight:500;color:var(--olive);letter-spacing:-1.5px;line-height:.9">+${o.ob}</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1px">quarto${o.ob>1?"s":""}</div></div>`;
+      h+=`</div>`;
+
+      // Reasoning: who is at risk
+      if(hiCount>0){
+        h+=`<div style="border-top:1px solid var(--rule);padding-top:12px"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px">Baseado em ${hiCount} reserva${hiCount>1?"s":""} de alto risco</div>`;
+        h+=`<div style="font-family:Inter Tight,sans-serif;font-size:12px;color:var(--ink-2);line-height:1.4">${hiGuests.map(g=>esc(g)).join(", ")}${hiCount>3?` +${hiCount-3} outras`:""}</div></div>`;
+      }
+
+      // Confidence + revenue metrics (two side by side)
+      h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--rule)">`;
+      h+=`<div style="padding:12px 14px;border-right:1px solid var(--rule)"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">Confiança ${confLabel}</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:${confColor};line-height:1">${o.combinedProb}<span style="font-size:12px">%</span></div></div>`;
+      h+=`<div style="padding:12px 14px"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">Receita extra</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--green);line-height:1">€${(o.avgRate*o.ob).toLocaleString("pt")}</div></div>`;
+      h+=`</div>`;
+
+      // Room categories (no truncation)
+      if(o.roomsStr){
+        h+=`<div style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--ink-3);line-height:1.5;word-wrap:break-word">${esc(o.roomsStr)}</div>`;
+      }
+
+      // CTA
+      h+=`<button id="ob-btn-${idx}" onclick="nexo.openForSale(${idx})" class="action-btn" style="background:var(--yellow);color:var(--ink);border-color:var(--olive);margin:0;margin-top:auto">Abrir à venda (+${o.ob})</button>`;
+
+      h+=`</div>`;
+    });
+    h+=`</div>`;
+
+    // Footer summary
+    h+=`<div style="margin-top:22px;padding:18px 22px;border:1px solid var(--ink);background:var(--paper-2);display:flex;justify-content:space-between;align-items:center">`;
+    h+=`<span style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px">${ob.length} dias · ${ob.reduce((s,o)=>s+o.ob,0)} quartos extra · ${ob.length?(ob.reduce((s,o)=>s+o.combinedProb,0)/ob.length).toFixed(0):0}% confiança média</span>`;
+    h+=`<span style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--olive)">€${Math.round(obRev).toLocaleString("pt")} <span style="font-size:11px;color:var(--ink-3);font-family:JetBrains Mono,monospace;text-transform:uppercase;letter-spacing:1px">receita potencial</span></span>`;
+    h+=`</div>`;
+
+    h+=`</div>`;
+    return h;
   }
 
   function renderRetention(ret){
@@ -1363,10 +1491,52 @@ const nexo=(function(){
     h+=`</div>`;
 
     // Reliability diagram + feature importances
-    h+=`<div style="display:grid;grid-template-columns:380px 1fr;gap:20px">`;
+    h+=`<div style="display:grid;grid-template-columns:380px 1fr;gap:20px;margin-bottom:28px">`;
     h+=`<div style="border:1px solid var(--ink);padding:16px;background:var(--paper)"><div style="font-family:Fraunces,serif;font-size:14px;font-weight:500;margin-bottom:8px">Reliability diagram</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-bottom:12px">Se o modelo diz X%, cancelam de facto X%?</div>${renderReliabilityDiagram(m.latest_buckets)}</div>`;
     h+=`<div style="border:1px solid var(--ink);padding:16px;background:var(--paper)"><div style="font-family:Fraunces,serif;font-size:14px;font-weight:500;margin-bottom:8px">Feature importances</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-bottom:12px">Coeficientes do modelo activo · vermelho = aumenta risco · verde = reduz</div>${renderFeatureImportances(m.feature_importances)}</div>`;
     h+=`</div>`;
+
+    // Retrospective — "Como estou a acertar?" + table of recent closed predictions
+    if(m.accuracy_stats||(m.recent_closed&&m.recent_closed.length>0)){
+      const as=m.accuracy_stats;
+      h+=`<div style="border:1px solid var(--ink);background:var(--paper);padding:20px;margin-bottom:28px">`;
+      h+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--rule)">`;
+      h+=`<div><div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--accent-ink)">RETROSPECTIVE</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);margin-top:2px">Como é que o modelo tem andado a acertar</div></div>`;
+      if(as)h+=`<div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3)">${as.sample} predições fechadas</div>`;
+      h+=`</div>`;
+      if(as){
+        h+=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--rule);margin-bottom:20px">`;
+        const kpiStyle="padding:16px 20px;border-right:1px solid var(--rule)";
+        const lastStyle="padding:16px 20px";
+        h+=`<div style="${kpiStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px">Acurácia</div><div style="font-family:Fraunces,serif;font-size:28px;font-weight:500;line-height:1">${(as.accuracy*100).toFixed(1)}<span style="font-size:13px">%</span></div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-top:6px">acertos / total</div></div>`;
+        h+=`<div style="${kpiStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px">Precisão</div><div style="font-family:Fraunces,serif;font-size:28px;font-weight:500;line-height:1">${as.precision===null?"—":(as.precision*100).toFixed(1)+"<span style='font-size:13px'>%</span>"}</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-top:6px">dos que disse \"cancel\"</div></div>`;
+        h+=`<div style="${kpiStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px">Recall</div><div style="font-family:Fraunces,serif;font-size:28px;font-weight:500;line-height:1">${as.recall===null?"—":(as.recall*100).toFixed(1)+"<span style='font-size:13px'>%</span>"}</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-top:6px">das que cancelaram</div></div>`;
+        h+=`<div style="${lastStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px">Erros</div><div style="font-family:JetBrains Mono,monospace;font-size:13px;line-height:1.4"><span style="color:var(--red)">${as.false_positives}</span> falsos +<br><span style="color:var(--orange)">${as.false_negatives}</span> falsos −</div></div>`;
+        h+=`</div>`;
+      }
+      if(m.recent_closed&&m.recent_closed.length>0){
+        h+=`<div style="max-height:340px;overflow-y:auto">`;
+        h+=`<table style="width:100%;border-collapse:collapse;font-size:11px">`;
+        h+=`<tr style="border-bottom:1px solid var(--ink);color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.2px"><th style="text-align:left;padding:8px">Hóspede</th><th style="text-align:left;padding:8px">Prop</th><th style="text-align:left;padding:8px">Chegada</th><th style="text-align:right;padding:8px">Modelo disse</th><th style="text-align:left;padding:8px;padding-left:16px">Realidade</th><th style="text-align:center;padding:8px">✓/✗</th></tr>`;
+        m.recent_closed.slice(0,30).forEach(r=>{
+          const probPct=Math.round((r.predicted_prob||0)*100);
+          const probColor=probPct>=50?"var(--red)":"var(--green)";
+          const outcomeColor=r.outcome==="cancelled"||r.outcome==="no_show"?"var(--red)":"var(--green)";
+          const outcomeLabel=r.outcome==="cancelled"?"Cancelou":r.outcome==="stayed"?"Ficou":r.outcome==="no_show"?"No-show":esc(r.outcome||"—");
+          const correctIcon=r.correct?"<span style='color:var(--green);font-weight:700'>✓</span>":"<span style='color:var(--red);font-weight:700'>✗</span>";
+          h+=`<tr style="border-bottom:1px solid var(--rule)">`;
+          h+=`<td style="padding:8px;color:var(--ink);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.guest||"—")}</td>`;
+          h+=`<td style="padding:8px;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:9px">${esc((r.prop||"").slice(0,12))}</td>`;
+          h+=`<td style="padding:8px;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:10px">${esc((r.arrival||"").slice(5,10)||"—")}</td>`;
+          h+=`<td style="padding:8px;text-align:right;color:${probColor};font-weight:600;font-family:JetBrains Mono,monospace">${probPct}%</td>`;
+          h+=`<td style="padding:8px;padding-left:16px;color:${outcomeColor};font-weight:600">${outcomeLabel}</td>`;
+          h+=`<td style="padding:8px;text-align:center;font-size:14px">${correctIcon}</td>`;
+          h+=`</tr>`;
+        });
+        h+=`</table></div>`;
+      }
+      h+=`</div>`;
+    }
 
     h+=`</div>`;
     return h;
@@ -1448,8 +1618,9 @@ const nexo=(function(){
     state.backfilling=true;
     state.lastBackfill={startedAt:new Date().toISOString(),properties:[],totalImported:0,trainResult:null};
     render();
-    const propKeys=["alegria","hq","sbi","sbii"];
-    const propLabels={alegria:"Alegria",hq:"HQ Portfolio",sbi:"Santa Barbara I",sbii:"Santa Barbara II"};
+    // HQ excluído — é portfolio que agrega todas as outras, confunde e dá 504
+    const propKeys=["alegria","sbi","sbii"];
+    const propLabels={alegria:"Alegria",sbi:"Santa Barbara I",sbii:"Santa Barbara II"};
     let totalImported=0;
     try{
       for(let i=0;i<propKeys.length;i++){
@@ -1538,7 +1709,8 @@ const nexo=(function(){
   return{
     render,fetchFromMews,scoreAndProcessReservations,
     addNote,addTask,addNoteById,addTaskById,openForSale,bulkAddNotes,bulkAddTasks,generateWeeklyReport,
-    loadModelMetrics,retrainModel,backfillHistory,
+    loadModelMetrics,retrainModel,backfillHistory,restoreFromCache,
+    clearCacheAndReload:()=>{clearCache();data.reservations=[];data.availability={};data.overbooking=[];state.phase="upload";state.sel=null;render()},
     selectProperty:p=>{state.prop=p;state.sel=null;render()},
     selectTab:t=>{state.tab=t;if(t==="modelo"&&!state.modelMetrics&&!state.modelLoading)loadModelMetrics();else render()},
     setViewDays:d=>{state.viewDays=d;render()},
@@ -1551,6 +1723,10 @@ const nexo=(function(){
 })();
 
 window.addEventListener('DOMContentLoaded',()=>{
+  // Try to restore the last Mews fetch from localStorage before first render.
+  // If it's fresh (<24h), skip the upload screen and go straight to dashboard.
+  // The user can click "Atualizar dados" in the header to force a refresh.
+  nexo.restoreFromCache();
   nexo.render();
   // Event delegation for data-action buttons (replaces inline onclick with untrusted data)
   document.addEventListener('click',e=>{
@@ -1562,6 +1738,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     else if(action==='add-task')nexo.addTaskById(el.dataset.resvId);
     else if(action==='retrain')nexo.retrainModel();
     else if(action==='backfill')nexo.backfillHistory();
+    else if(action==='clear-cache')nexo.clearCacheAndReload();
   });
 });
 </script>
