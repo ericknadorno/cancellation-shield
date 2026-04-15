@@ -1,5 +1,9 @@
 {
   "name": "nexo",
-  "version": "2.1.0",
-  "private": true
+  "version": "2.2.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
 }
