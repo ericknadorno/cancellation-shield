@@ -885,7 +885,7 @@ const nexo=(function(){
           const walkCost=avgRate*2.5;
           const extraRev=avgRate*adj;
           const ev=Math.round(combinedProb*extraRev-(1-combinedProb)*walkCost);
-          ob.push({date:ds,prop,occPct,nHigh:hi.length,ob:adj,rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate,categoryId:rt.categoryId})),roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")).join(", ")||"Qualquer tipo",avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],hiGuests:hiGuests.join(", "),week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"}),ev,combinedProb:Math.round(combinedProb*100),walkCost:Math.round(walkCost),categoryIds:[...new Set(fr.slice(0,adj).map(rt=>rt.categoryId).filter(Boolean))]})
+          ob.push({date:ds,prop,occPct,nHigh:hi.length,ob:adj,rooms:fr.slice(0,adj).map(rt=>({type:rt.type,rate:rt.rate,categoryId:rt.categoryId})),roomsStr:fr.slice(0,adj).map(rt=>rt.type.split(" - ").pop().replace("Apartment","Apt")).join(", ")||"Qualquer tipo",avgRate,dow:dnArr[new Date(ds+"T12:00:00").getDay()],hiGuests,week:Math.ceil((new Date(ds+"T12:00:00").getDate())/7),month:new Date(ds+"T12:00:00").toLocaleString("pt",{month:"short"}),ev,combinedProb:Math.round(combinedProb*100),walkCost:Math.round(walkCost),categoryIds:[...new Set(fr.slice(0,adj).map(rt=>rt.categoryId).filter(Boolean))]})
         }
       })
     });
