@@ -218,55 +218,65 @@ async function importProperty(propKey, startDate, endDate) {
   const sourcesMap = {};
   sourcesRes.forEach(s => { sourcesMap[s.Id] = s.Name || ""; });
 
-  // 2. Pull terminal reservations in the date range.
-  // TimeFilter "Start" = filter by reservation's StartUtc (arrival date).
-  // This is what the existing client-side fetchFromMews uses — confirmed
-  // to work against Mews Connector API 2023-06-06. An earlier version of
-  // this file used "End" and ["Processed","Canceled","NoShow"] and
-  // returned zero rows — "End" is either invalid or returns nothing for
-  // cancelled reservations whose original EndUtc doesn't match expectations.
-  // Valid states in this API version: Confirmed, Started, Processed, Canceled.
-  // NoShow is NOT a standalone state — it lives as metadata on Canceled ones.
-  const resvAll = await fetchAllPages(
+  // 2. Pull terminal reservations.
+  // We deliberately do NOT use TimeFilter here — every TimeFilter variant
+  // we tried (End, Start) silently returned zero rows for some/all
+  // properties even though the data exists. Instead, we paginate ALL
+  // Processed/Canceled reservations and filter by CreatedUtc client-side.
+  // This matches the strategy of the cancelHistoryMap call in
+  // public/index.html fetchFromMews which is known to work.
+  const startDateMs = new Date(startDate + "T00:00:00Z").getTime();
+  const endDateMs   = new Date(endDate + "T23:59:59Z").getTime();
+  const resvRaw = await fetchAllPages(
     "reservations/getAll/2023-06-06",
     {
       States: ["Processed", "Canceled"],
-      TimeFilter: "Start",
-      StartUtc: startDate + "T00:00:00Z",
-      EndUtc: endDate + "T23:59:59Z",
-      Limitation: { Count: 200 },
+      Limitation: { Count: 1000 },
       Extent: { Reservations: true }
     },
     accessToken,
     "Reservations",
-    100  // allow up to 20k reservations per property
+    50  // up to 50k reservations per property
   );
 
+  const totalFetched = resvRaw.length;
+
+  // Filter by CreatedUtc range
+  const resvAll = resvRaw.filter(r => {
+    if (!r.CreatedUtc) return false;
+    const t = new Date(r.CreatedUtc).getTime();
+    return !isNaN(t) && t >= startDateMs && t <= endDateMs;
+  });
+
   if (resvAll.length === 0) {
-    // Extra diagnostic: try a no-filter probe to see if the property has ANY
-    // terminal reservations at all. Helps distinguish "empty property" from
-    // "date filter broken".
-    let probeCount = 0;
-    try {
-      const probe = await callMews(
-        "reservations/getAll/2023-06-06",
-        { States: ["Processed", "Canceled"], Limitation: { Count: 10 }, Extent: { Reservations: true } },
-        accessToken
-      );
-      probeCount = (probe.Reservations || []).length;
-    } catch (e) {
-      // ignore probe errors
+    // Diagnostic: how many did we fetch total, what's the date range of the
+    // earliest/latest, what states they have. Tells us whether Mews has any
+    // history at all and whether our date filter is wrong.
+    const stateCounts = {};
+    let earliestCreated = null, latestCreated = null;
+    for (const r of resvRaw.slice(0, 200)) {
+      stateCounts[r.State] = (stateCounts[r.State] || 0) + 1;
+      if (r.CreatedUtc) {
+        if (!earliestCreated || r.CreatedUtc < earliestCreated) earliestCreated = r.CreatedUtc;
+        if (!latestCreated   || r.CreatedUtc > latestCreated)   latestCreated   = r.CreatedUtc;
+      }
     }
     return {
       status: "ok",
       property: propKey,
+      property_name: enterpriseName,
       imported: 0,
       by_outcome: {},
-      note: "no historical reservations in range",
+      note: totalFetched === 0
+        ? "Mews returned 0 terminal reservations for this property"
+        : `Mews has ${totalFetched} terminal reservations but none created in [${startDate}, ${endDate}]`,
       debug: {
-        probe_without_timefilter: probeCount,
-        start_date: startDate,
-        end_date: endDate
+        total_fetched_from_mews: totalFetched,
+        date_filter_start: startDate,
+        date_filter_end: endDate,
+        sample_state_counts: stateCounts,
+        sample_earliest_created: earliestCreated,
+        sample_latest_created: latestCreated
       }
     };
   }
@@ -398,7 +408,8 @@ async function importProperty(propKey, startDate, endDate) {
     status: "ok",
     property: propKey,
     property_name: enterpriseName,
-    fetched: resvAll.length,
+    fetched_from_mews: totalFetched,
+    fetched_in_date_range: resvAll.length,
     imported,
     by_outcome: byOutcome
   };
