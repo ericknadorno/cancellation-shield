@@ -9,6 +9,7 @@
   "functions": {
     "api/outcomes.js": { "maxDuration": 60 },
     "api/train.js":    { "maxDuration": 60 },
+    "api/backfill.js": { "maxDuration": 60 },
     "api/score.js":    { "maxDuration": 30 },
     "api/mews.js":     { "maxDuration": 30 }
   }
