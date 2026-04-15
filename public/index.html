@@ -1396,32 +1396,51 @@ const nexo=(function(){
 
   async function backfillHistory(){
     if(state.backfilling)return;
-    if(!confirm("Importar histórico da Mews?\n\nVai puxar todas as reservas (Processed, Canceled, NoShow) de 2025-01-01 até ontem das 4 propriedades. Pode demorar 1-3 minutos por propriedade. Após importar, o modelo treina automaticamente com os dados reais do Haus Group."))return;
-    state.backfilling=true;state.umsg="A importar histórico Mews — pode demorar uns minutos...";render();
+    if(!confirm("Importar histórico da Mews?\n\nVai puxar reservas Processed e Canceled desde 2025-01-01 das 4 propriedades, UMA DE CADA VEZ (para não dar timeout no serverless). Cada propriedade leva ~30-60 segundos. Depois treina o modelo automaticamente."))return;
+    state.backfilling=true;render();
+    const propKeys=["alegria","hq","sbi","sbii"];
+    const propLabels={alegria:"Alegria",hq:"HQ Portfolio",sbi:"Santa Barbara I",sbii:"Santa Barbara II"};
+    let totalImported=0;
     try{
-      const resp=await fetch("/api/backfill",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({startDate:"2025-01-01"})
-      });
-      const result=await resp.json().catch(()=>({}));
-      if(!resp.ok){
-        throw new Error(result.message||result.error||("HTTP "+resp.status));
-      }
-      const total=result.total_imported||0;
-      addLog(`Backfill: ${total} reservas importadas em ${((result.duration_ms||0)/1000).toFixed(0)}s`);
-      (result.properties||[]).forEach(p=>{
-        if(p.status==="ok"){
-          const bo=p.by_outcome||{};
-          addLog(`  ${p.property_name||p.property}: ${p.imported} (${bo.cancelled||0} cancel, ${bo.stayed||0} stayed, ${bo.no_show||0} noshow)`);
-        }else{
-          addLog(`  ${p.property}: ${p.status} ${p.reason||p.message||""}`);
+      for(let i=0;i<propKeys.length;i++){
+        const key=propKeys[i];
+        state.umsg=`A importar ${propLabels[key]} (${i+1}/${propKeys.length})...`;
+        render();
+        addLog(`Backfill ${propLabels[key]}: a começar...`);
+        try{
+          const resp=await fetch("/api/backfill",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({property:key,startDate:"2025-01-01"})
+          });
+          const result=await resp.json().catch(()=>({}));
+          if(!resp.ok){
+            addLog(`Backfill ${propLabels[key]}: ERRO ${resp.status} — ${result.message||result.error||"(sem detalhes)"}`);
+            continue;
+          }
+          // When scoped to one property, result.properties[0] has the per-property data
+          const p=(result.properties&&result.properties[0])||result;
+          if(p.status==="ok"&&(p.imported||0)>0){
+            const bo=p.by_outcome||{};
+            addLog(`Backfill ${propLabels[key]}: ${p.imported} importadas (${bo.cancelled||0} cancel, ${bo.stayed||0} stayed)`);
+            totalImported+=p.imported;
+          }else if(p.status==="skipped"){
+            addLog(`Backfill ${propLabels[key]}: skipped — ${p.reason||"sem token"}`);
+          }else{
+            const dbg=p.debug?` probe=${p.debug.probe_without_timefilter}`:"";
+            addLog(`Backfill ${propLabels[key]}: 0 reservas no período${dbg}`);
+          }
+        }catch(err){
+          addLog(`Backfill ${propLabels[key]}: falhou — ${err.message}`);
         }
-      });
-      if(total>100){
-        addLog("A treinar modelo inicial com os dados históricos...");
-        state.umsg="A treinar modelo com histórico...";render();
+      }
+      addLog(`Backfill total: ${totalImported} reservas importadas`);
+      if(totalImported>100){
+        addLog("A treinar modelo inicial com dados históricos...");
+        state.umsg="A treinar modelo...";render();
         await retrainModelSilent();
+      }else{
+        addLog("Insuficiente para treinar — precisa >100 outcomes");
       }
       await loadModelMetrics();
     }catch(e){
