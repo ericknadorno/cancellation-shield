@@ -1,6 +1,8 @@
 // nexo — Mews Connector API proxy (production-hardened)
 // Stateless serverless function. Injects auth, enforces whitelist, blocks param injection.
 
+import { applyCors } from "../lib/cors.js";
+
 const READ_ENDPOINTS = [
   "configuration/get",
   "services/getAll",
@@ -30,26 +32,7 @@ const PROTECTED_FIELDS = ["ClientToken", "AccessToken", "Client"];
 const MAX_BODY_SIZE = 50_000;
 
 export default async function handler(req, res) {
-  // CORS — restrict to known origins. Hard-fail in production if ALLOWED_ORIGINS unset.
-  const origin = req.headers.origin || "";
-  const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
-  const isProd = process.env.VERCEL_ENV === "production";
-  if (isProd && ALLOWED_ORIGINS.length === 0) {
-    console.error("[mews] FATAL: ALLOWED_ORIGINS not configured in production");
-    return res.status(500).json({ error: "Server misconfiguration: CORS unset" });
-  }
-  if (ALLOWED_ORIGINS.length > 0) {
-    if (!ALLOWED_ORIGINS.includes(origin)) {
-      return res.status(403).json({ error: "Origin not allowed" });
-    }
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", origin || "*");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
+  if (!applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   // --- Auth tokens ---
