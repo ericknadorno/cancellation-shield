@@ -1,0 +1,42 @@
+name: Train GBM (nightly)
+
+# Runs LightGBM training every night at 05:00 UTC (after /api/outcomes
+# cron at 04:00 UTC has closed predictions and after /api/train cron at
+# 04:30 UTC has updated the logistic baseline). Writes the GBM variant
+# into model_weights with is_active=true when it beats the active
+# model by at least 0.005 AUC.
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: train-gbm
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: scripts/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+
+      - name: Run training
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scripts/train_gbm.py
