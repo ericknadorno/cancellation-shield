@@ -5,6 +5,7 @@
 //       Journal writes are fail-open: a DB outage does NOT break scoring.
 
 import { safeInsert, getServerClient } from "../lib/supabase.js";
+import { applyCors } from "../lib/cors.js";
 
 // ─── CONSTANTS ───
 const BDC_MO = {
@@ -317,27 +318,7 @@ export function computeRisk(r, calW) {
 // Body: { reservations: [ { ...features }, ... ], weights?: {...} }
 // Response: { results: [ { id, score, level, prob, override, factors }, ... ], model_version: "hand-tuned-v1" }
 export default async function handler(req, res) {
-  // CORS — mirror the mews proxy pattern
-  const origin = req.headers.origin || "";
-  const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
-  const isProd = process.env.VERCEL_ENV === "production";
-  if (isProd && ALLOWED_ORIGINS.length === 0) {
-    console.error("[score] FATAL: ALLOWED_ORIGINS not configured in production");
-    return res.status(500).json({ error: "Server misconfiguration: CORS unset" });
-  }
-  if (ALLOWED_ORIGINS.length > 0) {
-    if (!ALLOWED_ORIGINS.includes(origin)) {
-      return res.status(403).json({ error: "Origin not allowed" });
-    }
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", origin || "*");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
+  if (!applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   const { reservations, weights, persist = true } = req.body || {};
