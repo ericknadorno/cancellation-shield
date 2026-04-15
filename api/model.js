@@ -79,12 +79,80 @@ async function gatherDashboardData(sb) {
   // Latest reliability buckets (from the most recent history snapshot)
   const latestBuckets = history?.[0]?.reliability_buckets || [];
 
+  // Recent closed predictions — the "retrospective" table.
+  // Shows the most recent predictions where the outcome is known so staff
+  // can audit the model: did it say 80% and actually cancel? Did it say
+  // 5% and actually stay? This is the feedback loop made visible.
+  let recentClosed = [];
+  try {
+    const { data: rc } = await sb
+      .from("predictions")
+      .select("reservation_id, prop, snapshot_date, features, predicted_prob, score, level, model_version, outcome, outcome_final_at")
+      .not("outcome", "is", null)
+      .order("outcome_final_at", { ascending: false })
+      .limit(50);
+    recentClosed = (rc || []).map(r => ({
+      reservation_id: r.reservation_id,
+      prop: r.prop,
+      guest: r.features?.guest || "",
+      arrival: r.features?.arrival || null,
+      snapshot_date: r.snapshot_date,
+      predicted_prob: r.predicted_prob,
+      score: r.score,
+      level: r.level,
+      model_version: r.model_version,
+      outcome: r.outcome,
+      outcome_final_at: r.outcome_final_at,
+      correct: (r.predicted_prob >= 0.5) === (r.outcome === "cancelled" || r.outcome === "no_show")
+    }));
+  } catch (err) {
+    console.warn("[model] recent_closed:", err.message);
+  }
+
+  // Aggregate accuracy / precision / recall on the last 500 closed
+  // predictions — populates the "Como estou a acertar?" headline KPIs.
+  let accuracyStats = null;
+  try {
+    const { data: agg } = await sb
+      .from("predictions")
+      .select("predicted_prob, outcome")
+      .not("outcome", "is", null)
+      .order("outcome_final_at", { ascending: false })
+      .limit(500);
+    if (agg && agg.length > 0) {
+      let correct = 0, tp = 0, fp = 0, fn = 0, tn = 0;
+      for (const row of agg) {
+        const predCancel = row.predicted_prob >= 0.5;
+        const actualCancel = row.outcome === "cancelled" || row.outcome === "no_show";
+        if (predCancel === actualCancel) correct++;
+        if (predCancel && actualCancel) tp++;
+        if (predCancel && !actualCancel) fp++;
+        if (!predCancel && actualCancel) fn++;
+        if (!predCancel && !actualCancel) tn++;
+      }
+      accuracyStats = {
+        sample: agg.length,
+        accuracy: correct / agg.length,
+        precision: (tp + fp) > 0 ? tp / (tp + fp) : null,
+        recall: (tp + fn) > 0 ? tp / (tp + fn) : null,
+        true_positives: tp,
+        false_positives: fp,
+        false_negatives: fn,
+        true_negatives: tn
+      };
+    }
+  } catch (err) {
+    console.warn("[model] accuracy_stats:", err.message);
+  }
+
   return {
     active: active || null,
     history: history || [],
     latest_buckets: latestBuckets,
     feature_importances: featureImportances,
-    journal_stats: journalStats
+    journal_stats: journalStats,
+    recent_closed: recentClosed,
+    accuracy_stats: accuracyStats
   };
 }
 

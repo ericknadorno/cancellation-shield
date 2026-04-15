@@ -444,9 +444,11 @@ export default async function handler(req, res) {
   try {
     const results = [];
 
+    // HQ is a portfolio account that aggregates all others — skip it.
+    // It duplicates data across properties and times out due to size.
     const toProcess = property
       ? [property]
-      : Object.keys(PROPERTY_TOKENS).filter(k => !!PROPERTY_TOKENS[k]);
+      : Object.keys(PROPERTY_TOKENS).filter(k => !!PROPERTY_TOKENS[k] && k !== "hq");
 
     for (const propKey of toProcess) {
       try {
