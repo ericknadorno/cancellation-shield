@@ -39,13 +39,14 @@ const PROPERTY_NAMES = {
   sbii: "Santa Barbara II"
 };
 
-// Mews state → outcome label
+// Mews state → outcome label.
+// NoShow is typically represented as Canceled in Mews Connector API,
+// so we collapse both into "cancelled" (operationally identical from
+// the revenue-protection perspective).
 const STATE_TO_OUTCOME = {
   "Processed": "stayed",
   "Canceled":  "cancelled",
-  "Cancelled": "cancelled",
-  "NoShow":    "no_show",
-  "No-show":   "no_show"
+  "Cancelled": "cancelled"
 };
 
 // ─── Mews fetch ─────────────────────────────────────────
@@ -218,12 +219,19 @@ async function importProperty(propKey, startDate, endDate) {
   sourcesRes.forEach(s => { sourcesMap[s.Id] = s.Name || ""; });
 
   // 2. Pull terminal reservations in the date range.
-  // TimeFilter: "End" → filter by departure date (we want finished stays)
+  // TimeFilter "Start" = filter by reservation's StartUtc (arrival date).
+  // This is what the existing client-side fetchFromMews uses — confirmed
+  // to work against Mews Connector API 2023-06-06. An earlier version of
+  // this file used "End" and ["Processed","Canceled","NoShow"] and
+  // returned zero rows — "End" is either invalid or returns nothing for
+  // cancelled reservations whose original EndUtc doesn't match expectations.
+  // Valid states in this API version: Confirmed, Started, Processed, Canceled.
+  // NoShow is NOT a standalone state — it lives as metadata on Canceled ones.
   const resvAll = await fetchAllPages(
     "reservations/getAll/2023-06-06",
     {
-      States: ["Processed", "Canceled", "NoShow"],
-      TimeFilter: "End",
+      States: ["Processed", "Canceled"],
+      TimeFilter: "Start",
       StartUtc: startDate + "T00:00:00Z",
       EndUtc: endDate + "T23:59:59Z",
       Limitation: { Count: 200 },
@@ -235,7 +243,32 @@ async function importProperty(propKey, startDate, endDate) {
   );
 
   if (resvAll.length === 0) {
-    return { status: "ok", property: propKey, imported: 0, by_outcome: {}, note: "no historical reservations in range" };
+    // Extra diagnostic: try a no-filter probe to see if the property has ANY
+    // terminal reservations at all. Helps distinguish "empty property" from
+    // "date filter broken".
+    let probeCount = 0;
+    try {
+      const probe = await callMews(
+        "reservations/getAll/2023-06-06",
+        { States: ["Processed", "Canceled"], Limitation: { Count: 10 }, Extent: { Reservations: true } },
+        accessToken
+      );
+      probeCount = (probe.Reservations || []).length;
+    } catch (e) {
+      // ignore probe errors
+    }
+    return {
+      status: "ok",
+      property: propKey,
+      imported: 0,
+      by_outcome: {},
+      note: "no historical reservations in range",
+      debug: {
+        probe_without_timefilter: probeCount,
+        start_date: startDate,
+        end_date: endDate
+      }
+    };
   }
 
   // 3. Pull related customers in batches (needed for nationality, email)
