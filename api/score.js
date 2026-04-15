@@ -17,6 +17,7 @@ import {
 } from "../lib/features.js";
 import { getServerClient } from "../lib/supabase.js";
 import { applyCors } from "../lib/cors.js";
+import { isGBMModel, scoreWithGBM } from "../lib/gbm.js";
 
 // Hand-tuned weights v1. Used when no trained model is active yet.
 const DEFAULT_WEIGHTS = {
@@ -131,12 +132,18 @@ function scoreLearned(r, coefs) {
 }
 
 // ─── UNIFIED ENTRY POINT ───
+// Three scoring paths, picked from the active model_weights row:
+//   1. GBM      — active row has algorithm="gbm" (exported by scripts/train_gbm.py)
+//   2. Logistic — active row has a numeric "intercept" field (from /api/train)
+//   3. Hand-tuned — no active model yet (cold start fallback)
 export function computeRisk(r, activeWeights) {
   const override = applyHardOverrides(r);
   if (override) return { ...override, factors: [] };
 
   let risk;
-  if (activeWeights && typeof activeWeights.intercept === "number") {
+  if (activeWeights && isGBMModel(activeWeights)) {
+    risk = scoreWithGBM(r, activeWeights);
+  } else if (activeWeights && typeof activeWeights.intercept === "number") {
     risk = scoreLearned(r, activeWeights);
   } else {
     risk = scoreHandTuned(r, activeWeights || DEFAULT_WEIGHTS);
