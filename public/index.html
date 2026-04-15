@@ -488,7 +488,7 @@ body{
 // ─── NAMESPACE ───
 const nexo=(function(){
   // Global state
-  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:""};
+  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false};
   let data={reservations:[],availability:{},overbooking:[],obMap:{},log:[],calibratedWeights:null,weatherCache:{},serviceId:null,serviceIds:{},propKeyByName:{}};
   let pendingFiles=[];
   let propShorthand={};
@@ -1025,7 +1025,7 @@ const nexo=(function(){
 
     // Tabs
     h+=`<div class="tabs">`;
-    [{id:"timeline",l:"Timeline"},{id:"overbooking",l:"Overbooking"},{id:"retention",l:"Ações"},{id:"periods",l:"Períodos"}].forEach(t=>{h+=`<button class="tab${state.tab===t.id?" on":""}" onclick="nexo.selectTab('${t.id}')">${t.l}</button>`});
+    [{id:"timeline",l:"Timeline"},{id:"overbooking",l:"Overbooking"},{id:"retention",l:"Ações"},{id:"periods",l:"Períodos"},{id:"modelo",l:"Modelo"}].forEach(t=>{h+=`<button class="tab${state.tab===t.id?" on":""}" onclick="nexo.selectTab('${t.id}')">${t.l}</button>`});
     h+=`<div class="nav"><button class="nbtn" onclick="nexo.prevDays()">◀</button><button class="nbtn on" onclick="nexo.goToday()">Hoje</button><button class="nbtn" onclick="nexo.nextDays()">▶</button>`;
     [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${state.viewDays===d?" on":""}" onclick="nexo.setViewDays(${d})">${d}d</button>`});
     h+=`</div></div><div class="content"><div class="main">`;
@@ -1038,6 +1038,8 @@ const nexo=(function(){
     else if(state.tab==="retention"){h+=renderRetention(ret)}
     // Periods Tab
     else if(state.tab==="periods"){h+=renderPeriods()}
+    // Model Tab — metrics are fetched by selectTab() when the user clicks it
+    else if(state.tab==="modelo"){h+=renderModel()}
 
     h+=`</div>`;
 
@@ -1149,6 +1151,176 @@ const nexo=(function(){
     return h
   }
 
+  // ─── MODEL TAB ───
+  // Pure-SVG charts (no libs). Line chart for AUC/Brier timelines,
+  // horizontal bars for feature importances, scatter + perfect-calibration
+  // line for the reliability diagram.
+
+  function svgLine(points,W,H,pad,color,domain){
+    // points: [{x, y}], domain: {xMin,xMax,yMin,yMax}
+    if(points.length<2)return "";
+    const {xMin,xMax,yMin,yMax}=domain;
+    const sx=v=>pad+((v-xMin)/(xMax-xMin||1))*(W-2*pad);
+    const sy=v=>H-pad-((v-yMin)/(yMax-yMin||1))*(H-2*pad);
+    let d=`M${sx(points[0].x)} ${sy(points[0].y)}`;
+    for(let i=1;i<points.length;i++)d+=` L${sx(points[i].x)} ${sy(points[i].y)}`;
+    let h=`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    points.forEach(p=>{h+=`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="3" fill="${color}"/>`});
+    return h;
+  }
+
+  function renderModelTimelineChart(history,key,label,color,domain){
+    if(!history||history.length<2){
+      return `<div style="padding:40px;text-align:center;color:var(--ink-3);font-family:var(--font-mono);font-size:10px;letter-spacing:1px">Insuficiente — precisa de ≥2 runs</div>`;
+    }
+    const W=520,H=160,pad=32;
+    // Reverse so oldest is leftmost, newest rightmost
+    const rows=[...history].reverse();
+    const points=rows.map((r,i)=>({x:i,y:r[key]||0}));
+    const xMin=0,xMax=rows.length-1;
+    const dom={xMin,xMax,...domain};
+    let h=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-width:520px">`;
+    // Grid lines
+    const yTicks=4;
+    for(let i=0;i<=yTicks;i++){
+      const v=domain.yMin+(domain.yMax-domain.yMin)*(i/yTicks);
+      const y=H-pad-((v-domain.yMin)/(domain.yMax-domain.yMin||1))*(H-2*pad);
+      h+=`<line x1="${pad}" y1="${y}" x2="${W-pad}" y2="${y}" stroke="var(--rule)" stroke-width="1" stroke-dasharray="2,3"/>`;
+      h+=`<text x="${pad-6}" y="${y+3}" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--ink-3)" text-anchor="end">${v.toFixed(2)}</text>`;
+    }
+    // Line
+    h+=svgLine(points,W,H,pad,color,dom);
+    // X axis labels (first and last date)
+    const firstDate=rows[0].evaluated_at?rows[0].evaluated_at.slice(5,10):"—";
+    const lastDate=rows[rows.length-1].evaluated_at?rows[rows.length-1].evaluated_at.slice(5,10):"—";
+    h+=`<text x="${pad}" y="${H-8}" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--ink-3)">${esc(firstDate)}</text>`;
+    h+=`<text x="${W-pad}" y="${H-8}" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--ink-3)" text-anchor="end">${esc(lastDate)}</text>`;
+    // Title
+    h+=`<text x="${pad}" y="18" font-family="Fraunces,serif" font-size="14" font-weight="500" fill="var(--ink)">${esc(label)}</text>`;
+    h+=`</svg>`;
+    return h;
+  }
+
+  function renderReliabilityDiagram(buckets){
+    if(!buckets||buckets.length===0){
+      return `<div style="padding:40px;text-align:center;color:var(--ink-3);font-family:var(--font-mono);font-size:10px;letter-spacing:1px">Sem dados — aguarda o primeiro treino</div>`;
+    }
+    const W=360,H=280,pad=36;
+    const sx=v=>pad+v*(W-2*pad);
+    const sy=v=>H-pad-v*(H-2*pad);
+    let h=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-width:360px">`;
+    // Perfect-calibration diagonal
+    h+=`<line x1="${sx(0)}" y1="${sy(0)}" x2="${sx(1)}" y2="${sy(1)}" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3,3"/>`;
+    // Axes
+    h+=`<line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="var(--ink)" stroke-width="1"/>`;
+    h+=`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="var(--ink)" stroke-width="1"/>`;
+    // Grid ticks
+    [0,0.25,0.5,0.75,1].forEach(t=>{
+      h+=`<text x="${sx(t)}" y="${H-pad+14}" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--ink-3)" text-anchor="middle">${t}</text>`;
+      h+=`<text x="${pad-6}" y="${sy(t)+3}" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--ink-3)" text-anchor="end">${t}</text>`;
+    });
+    // Points — size by count, radius 3-10
+    const maxCount=Math.max(...buckets.map(b=>b.count||0),1);
+    buckets.forEach(b=>{
+      if(!b.count)return;
+      const r=3+7*(b.count/maxCount);
+      const cx=sx(b.avg_pred);
+      const cy=sy(b.actual_rate);
+      h+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="var(--accent)" fill-opacity="0.6" stroke="var(--accent-ink)" stroke-width="1.5"/>`;
+    });
+    // Axis labels
+    h+=`<text x="${W/2}" y="${H-4}" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--ink-3)" text-anchor="middle">Previsto</text>`;
+    h+=`<text x="10" y="${H/2}" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--ink-3)" text-anchor="middle" transform="rotate(-90 10 ${H/2})">Real</text>`;
+    h+=`</svg>`;
+    return h;
+  }
+
+  function renderFeatureImportances(importances){
+    if(!importances||importances.length===0){
+      return `<div style="padding:40px;text-align:center;color:var(--ink-3);font-family:var(--font-mono);font-size:10px;letter-spacing:1px">Sem modelo treinado ainda</div>`;
+    }
+    const top=importances.slice(0,12);
+    const maxAbs=Math.max(...top.map(f=>f.abs_coef),0.001);
+    let h=`<div style="display:flex;flex-direction:column;gap:6px;padding:8px 0">`;
+    top.forEach(f=>{
+      const w=(f.abs_coef/maxAbs)*100;
+      const positive=f.coef>=0;
+      const color=positive?"var(--red)":"var(--green)";
+      h+=`<div style="display:grid;grid-template-columns:90px 1fr 60px;gap:10px;align-items:center;font-size:11px">`;
+      h+=`<span style="font-family:JetBrains Mono,monospace;color:var(--ink-2);text-transform:uppercase;letter-spacing:.5px">${esc(f.name)}</span>`;
+      h+=`<div style="background:var(--rule);height:10px;position:relative"><div style="background:${color};height:100%;width:${w}%"></div></div>`;
+      h+=`<span style="font-family:JetBrains Mono,monospace;color:${color};text-align:right;font-variant-numeric:tabular-nums">${(f.coef>=0?"+":"")+f.coef.toFixed(3)}</span>`;
+      h+=`</div>`;
+    });
+    h+=`</div>`;
+    return h;
+  }
+
+  function renderModel(){
+    const m=state.modelMetrics;
+    let h=`<div class="tbl" style="max-width:1200px">`;
+
+    // Title + retrain button
+    h+=`<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;padding-bottom:14px;border-bottom:1px solid var(--ink)">`;
+    h+=`<div><div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--accent-ink);margin-bottom:4px">MODEL DASHBOARD</div><h2 style="font-family:Fraunces,serif;font-size:34px;font-weight:500;color:var(--ink);letter-spacing:-1px;line-height:.95">Estado do modelo</h2></div>`;
+    h+=`<button class="btn api" data-action="retrain" ${state.retraining?"disabled":""} style="padding:8px 16px">${state.retraining?"A treinar...":"Forçar retreino"}</button>`;
+    h+=`</div>`;
+
+    if(state.modelLoading){
+      h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">A CARREGAR MÉTRICAS...</div>`;
+      h+=`</div>`;
+      return h;
+    }
+
+    if(!m){
+      h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">SEM DADOS — CLICA EM \"FORÇAR RETREINO\" OU AGUARDA O CRON NOTURNO (04:30 UTC)</div>`;
+      h+=`</div>`;
+      return h;
+    }
+
+    // Active model summary card
+    const active=m.active;
+    const js=m.journal_stats;
+    h+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;border:1px solid var(--ink);margin-bottom:28px">`;
+    const kpiStyle=`padding:20px 22px;border-right:1px solid var(--rule)`;
+    const lastStyle=`padding:20px 22px`;
+    if(active){
+      h+=`<div style="${kpiStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.6px;margin-bottom:10px">Modelo Activo</div><div style="font-family:Fraunces,serif;font-size:32px;font-weight:500;line-height:1;letter-spacing:-1px">${active.auc?(active.auc*100).toFixed(1):"—"}<span style="font-size:14px">% AUC</span></div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-top:8px">${esc(active.version||"—")}</div></div>`;
+      h+=`<div style="${kpiStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.6px;margin-bottom:10px">Brier Score</div><div style="font-family:Fraunces,serif;font-size:32px;font-weight:500;line-height:1;letter-spacing:-1px">${active.brier?active.brier.toFixed(3):"—"}</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-top:8px">menor é melhor</div></div>`;
+      h+=`<div style="${kpiStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.6px;margin-bottom:10px">Calibração</div><div style="font-family:Fraunces,serif;font-size:32px;font-weight:500;line-height:1;letter-spacing:-1px">${active.calibration_error?(active.calibration_error*100).toFixed(1):"—"}<span style="font-size:14px">% erro</span></div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-top:8px">ECE 10 buckets</div></div>`;
+      h+=`<div style="${lastStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.6px;margin-bottom:10px">Amostras de Treino</div><div style="font-family:Fraunces,serif;font-size:32px;font-weight:500;line-height:1;letter-spacing:-1px">${active.training_samples?active.training_samples.toLocaleString("pt"):"—"}</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-top:8px">${esc((active.training_window_start||"").slice(5))}–${esc((active.training_window_end||"").slice(5))}</div></div>`;
+    }else{
+      h+=`<div style="grid-column:1/-1;padding:32px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1.5px">SEM MODELO APRENDIDO ACTIVO — A USAR HAND-TUNED V1 (COLD START)</div>`;
+    }
+    h+=`</div>`;
+
+    // Journal stats row
+    if(js){
+      h+=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">`;
+      const jStyle=`border:1px solid var(--rule);padding:14px 16px;background:var(--paper)`;
+      h+=`<div style="${jStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px">Rows no Journal</div><div style="font-family:Fraunces,serif;font-size:24px;font-weight:500;margin-top:4px">${(js.total_rows||0).toLocaleString("pt")}</div></div>`;
+      h+=`<div style="${jStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px">Com Outcome</div><div style="font-family:Fraunces,serif;font-size:24px;font-weight:500;margin-top:4px">${(js.rows_with_outcome||0).toLocaleString("pt")}</div></div>`;
+      h+=`<div style="${jStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px">Taxa Cancelação</div><div style="font-family:Fraunces,serif;font-size:24px;font-weight:500;margin-top:4px">${js.positive_rate?(js.positive_rate*100).toFixed(1)+"%":"—"}</div></div>`;
+      h+=`<div style="${jStyle}"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.4px">Último Snapshot</div><div style="font-family:Fraunces,serif;font-size:24px;font-weight:500;margin-top:4px">${esc(js.last_snapshot_date||"—")}</div></div>`;
+      h+=`</div>`;
+    }
+
+    // Two charts side by side: AUC timeline + Brier timeline
+    h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px">`;
+    h+=`<div style="border:1px solid var(--ink);padding:16px;background:var(--paper)">${renderModelTimelineChart(m.history,"auc","AUC ao longo do tempo","var(--accent-ink)",{yMin:0.5,yMax:1})}</div>`;
+    h+=`<div style="border:1px solid var(--ink);padding:16px;background:var(--paper)">${renderModelTimelineChart(m.history,"brier","Brier ao longo do tempo","var(--ink)",{yMin:0,yMax:0.3})}</div>`;
+    h+=`</div>`;
+
+    // Reliability diagram + feature importances
+    h+=`<div style="display:grid;grid-template-columns:380px 1fr;gap:20px">`;
+    h+=`<div style="border:1px solid var(--ink);padding:16px;background:var(--paper)"><div style="font-family:Fraunces,serif;font-size:14px;font-weight:500;margin-bottom:8px">Reliability diagram</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-bottom:12px">Se o modelo diz X%, cancelam de facto X%?</div>${renderReliabilityDiagram(m.latest_buckets)}</div>`;
+    h+=`<div style="border:1px solid var(--ink);padding:16px;background:var(--paper)"><div style="font-family:Fraunces,serif;font-size:14px;font-weight:500;margin-bottom:8px">Feature importances</div><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);margin-bottom:12px">Coeficientes do modelo activo · vermelho = aumenta risco · verde = reduz</div>${renderFeatureImportances(m.feature_importances)}</div>`;
+    h+=`</div>`;
+
+    h+=`</div>`;
+    return h;
+  }
+
   function renderUpload(){
     let h=`<div class="up-zone">`;
     h+=`<div class="kicker">Cancellation Intelligence · Est. 2026</div>`;
@@ -1175,12 +1347,57 @@ const nexo=(function(){
     return addTask(r.id,r.guest,r.score,r.prob,r.arrival,r.offer||"Oferecer upgrade");
   }
 
+  // ─── MODEL DASHBOARD ACTIONS ───
+  async function loadModelMetrics(){
+    if(state.modelLoading)return;
+    state.modelLoading=true;render();
+    try{
+      const resp=await fetch("/api/model",{method:"GET",headers:{"Accept":"application/json"}});
+      if(!resp.ok){
+        const txt=await resp.text().catch(()=>"");
+        throw new Error("Falha a carregar métricas ("+resp.status+"): "+txt.slice(0,160));
+      }
+      state.modelMetrics=await resp.json();
+    }catch(e){
+      addLog("Métricas: "+e.message);
+      state.modelMetrics=null;
+    }finally{
+      state.modelLoading=false;render();
+    }
+  }
+
+  async function retrainModel(){
+    if(state.retraining)return;
+    if(!confirm("Forçar retreino do modelo agora?\n\nIsto lê as predições fechadas dos últimos 12 meses, ajusta uma nova regressão logística, e substitui o modelo activo se o AUC melhorar."))return;
+    state.retraining=true;render();
+    try{
+      const resp=await fetch("/api/model",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+      const result=await resp.json().catch(()=>({}));
+      if(!resp.ok){
+        throw new Error(result.message||result.error||("HTTP "+resp.status));
+      }
+      if(result.status==="skipped"){
+        addLog("Retreino: skipped — "+(result.reason||"sem dados"));
+      }else{
+        addLog("Retreino: "+result.status+(result.promoted?" (promovido)":" (não promovido)")+" AUC="+(result.metrics?.auc?.toFixed(4)||"?"));
+      }
+      // Reload metrics after training
+      await loadModelMetrics();
+    }catch(e){
+      addLog("Retreino falhou: "+e.message);
+      alert("Retreino falhou: "+e.message);
+    }finally{
+      state.retraining=false;render();
+    }
+  }
+
   // ─── PUBLIC API ───
   return{
     render,fetchFromMews,scoreAndProcessReservations,
     addNote,addTask,addNoteById,addTaskById,openForSale,bulkAddNotes,bulkAddTasks,generateWeeklyReport,
+    loadModelMetrics,retrainModel,
     selectProperty:p=>{state.prop=p;state.sel=null;render()},
-    selectTab:t=>{state.tab=t;render()},
+    selectTab:t=>{state.tab=t;if(t==="modelo"&&!state.modelMetrics&&!state.modelLoading)loadModelMetrics();else render()},
     setViewDays:d=>{state.viewDays=d;render()},
     prevDays:()=>{const d=new Date(state.vs+"T12:00:00");d.setDate(d.getDate()-state.viewDays);state.vs=d.toISOString().split("T")[0];render()},
     nextDays:()=>{const d=new Date(state.vs+"T12:00:00");d.setDate(d.getDate()+state.viewDays);state.vs=d.toISOString().split("T")[0];render()},
@@ -1200,6 +1417,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(action==='clear-selection')nexo.clearSelection();
     else if(action==='add-note')nexo.addNoteById(el.dataset.resvId);
     else if(action==='add-task')nexo.addTaskById(el.dataset.resvId);
+    else if(action==='retrain')nexo.retrainModel();
   });
 });
 </script>
