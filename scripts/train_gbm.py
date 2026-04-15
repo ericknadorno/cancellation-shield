@@ -74,8 +74,16 @@ def log(msg: str) -> None:
 
 
 def get_client() -> Client:
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_SERVICE_KEY")
+    # .strip() is load-bearing: GitHub Actions secrets sometimes pick up a
+    # trailing newline when you paste them in the dashboard, and httpx then
+    # rejects the URL with "Invalid non-printable ASCII character '\n' at
+    # position N". Same failure mode for keys. Stripping here makes the job
+    # idempotent to paste mistakes.
+    url = (os.environ.get("SUPABASE_URL") or "").strip()
+    key = (
+        (os.environ.get("SUPABASE_SECRET_KEY") or "").strip()
+        or (os.environ.get("SUPABASE_SERVICE_KEY") or "").strip()
+    )
     if not url or not key:
         raise RuntimeError("SUPABASE_URL and SUPABASE_SECRET_KEY env vars required")
     return create_client(url, key)
