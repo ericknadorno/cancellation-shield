@@ -10,6 +10,12 @@ on:
   schedule:
     - cron: '0 5 * * *'
   workflow_dispatch:
+    inputs:
+      force_promote:
+        description: 'Force-promote the new model (skip AUC comparison). Use once to bootstrap past a broken baseline.'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: train-gbm
@@ -39,4 +45,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          FORCE_PROMOTE: ${{ inputs.force_promote }}
         run: python scripts/train_gbm.py

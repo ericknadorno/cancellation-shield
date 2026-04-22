@@ -98,18 +98,33 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
     # they're valid training data even though they don't count toward the
     # /api/model retrospective accuracy stats.
     log(f"Querying predictions with outcome_final_at >= {window_start}...")
-    resp = (
-        sb.table("predictions")
-          .select("features, outcome")
-          .not_.is_("outcome", "null")
-          .not_.is_("outcome_final_at", "null")
-          .gte("outcome_final_at", window_start)
-          .limit(50000)
-          .execute()
-    )
 
-    rows = resp.data or []
-    log(f"Fetched {len(rows)} closed predictions")
+    # Supabase (PostgREST) caps each response at ~1000 rows regardless of
+    # .limit(). We paginate with .range() to get all training data.
+    PAGE = 1000
+    rows = []
+    page = 0
+    while True:
+        lo = page * PAGE
+        hi = lo + PAGE - 1
+        resp = (
+            sb.table("predictions")
+              .select("features, outcome")
+              .not_.is_("outcome", "null")
+              .not_.is_("outcome_final_at", "null")
+              .gte("outcome_final_at", window_start)
+              .range(lo, hi)
+              .execute()
+        )
+        batch = resp.data or []
+        rows.extend(batch)
+        if len(batch) < PAGE:
+            break
+        page += 1
+        if page >= 100:  # safety: 100k rows max
+            break
+
+    log(f"Fetched {len(rows)} closed predictions ({page + 1} pages)")
 
     X, y = [], []
     skipped = 0
@@ -339,11 +354,18 @@ def main() -> int:
     log("Inserting model_weights row...")
     sb.table("model_weights").insert(row).execute()
 
-    # Promote if we beat the active one
+    # Promote if we beat the active one.
+    # FORCE_PROMOTE env var skips the AUC comparison — needed once to
+    # bootstrap past the broken logistic that claimed AUC 1.0000.
+    force = os.environ.get("FORCE_PROMOTE", "").strip().lower() in ("1", "true", "yes")
     active = get_active_model(sb)
     current_auc = float(active["auc"]) if active and active.get("auc") is not None else 0.0
     promoted = False
-    if auc >= current_auc + IMPROVEMENT_THRESHOLD:
+    if force:
+        promote(sb, version, active["version"] if active else None)
+        promoted = True
+        log(f"FORCE-PROMOTED: new AUC {auc:.4f} (forced, skipping comparison with {current_auc:.4f})")
+    elif auc >= current_auc + IMPROVEMENT_THRESHOLD:
         promote(sb, version, active["version"] if active else None)
         promoted = True
         log(f"PROMOTED: new AUC {auc:.4f} > current {current_auc:.4f} + {IMPROVEMENT_THRESHOLD}")
