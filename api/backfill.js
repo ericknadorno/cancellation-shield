@@ -140,7 +140,7 @@ function mapReservation(res, ctx, enterpriseName) {
   const bookingHour = cre ? cre.getUTCHours() : null;
   const modificationCount = wasModified ? Math.max(1, Math.round(Math.abs(updatedMs - createdMs) / 3600000)) : 0;
 
-  const history = ctx.cancelHistoryMap[res.AccountId || res.CustomerId] || { stays: 0, cancels: 0 };
+  const history = ctx.priorHistoryByResId[res.Id] || { stays: 0, cancels: 0 };
   const hasChildren = false;  // not reliably extractable from historical data
   const hasTravelAgency = !!res.TravelAgencyId;
 
@@ -332,18 +332,46 @@ async function importProperty(propKey, startDate, endDate) {
   //    Hobby tier (60s maxDuration) AND it fed the leaky `pay` feature.
   //    See mapReservation's paymentStatus comment for the full story.
 
-  // 6. Build per-account history from the same dataset (fast: we already
-  // have all terminal reservations in memory)
-  const cancelHistoryMap = {};
+  // 6. Build TEMPORAL per-reservation prior history.
+  //
+  // OLD (leaky): flat cancelHistoryMap counted the ENTIRE dataset per account,
+  // including the current reservation's own outcome and future events.
+  // A cancelled reservation counted itself as a "previous cancel", giving
+  // the model a trivial discriminator (previousCancels ≥ 1 ⟹ cancelled).
+  //
+  // NEW: for each reservation, count only terminal reservations for the same
+  // account whose CreatedUtc is STRICTLY before this one. This is the true
+  // "prior history at booking time" the live model would see. A reservation
+  // never sees itself or future events in the history counts.
+  const byAccount = {};
   for (const r of resvAll) {
     const aid = r.AccountId || r.CustomerId;
     if (!aid) continue;
-    if (!cancelHistoryMap[aid]) cancelHistoryMap[aid] = { stays: 0, cancels: 0 };
-    if (r.State === "Processed") cancelHistoryMap[aid].stays++;
-    if (r.State === "Canceled" || r.State === "Cancelled") cancelHistoryMap[aid].cancels++;
+    if (!byAccount[aid]) byAccount[aid] = [];
+    byAccount[aid].push(r);
+  }
+  // Sort each account's reservations by CreatedUtc ascending
+  for (const aid of Object.keys(byAccount)) {
+    byAccount[aid].sort((a, b) => {
+      const ta = a.CreatedUtc || "";
+      const tb = b.CreatedUtc || "";
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    });
+  }
+  // Walk each account in chronological order, accumulating running counts.
+  // For reservation i, priorHistory = counts from reservations 0..i-1.
+  const priorHistoryByResId = {};
+  for (const aid of Object.keys(byAccount)) {
+    let stays = 0, cancels = 0;
+    for (const r of byAccount[aid]) {
+      // Record priors BEFORE counting this reservation's own outcome
+      priorHistoryByResId[r.Id] = { stays, cancels };
+      if (r.State === "Processed") stays++;
+      else if (r.State === "Canceled" || r.State === "Cancelled") cancels++;
+    }
   }
 
-  const ctx = { ratesMap, sourcesMap, customersMap, itemsMap, cancelHistoryMap };
+  const ctx = { ratesMap, sourcesMap, customersMap, itemsMap, priorHistoryByResId };
 
   // 7. Map each reservation, build upsert rows
   const rows = [];

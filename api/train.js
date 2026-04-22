@@ -83,17 +83,29 @@ export default async function handler(req, res) {
     windowStart.setDate(windowStart.getDate() - TRAIN_WINDOW_DAYS);
     const windowStartStr = windowStart.toISOString();
 
-    const { data: rows, error: qErr } = await sb
-      .from("predictions")
-      .select("features, outcome, outcome_final_at")
-      .not("outcome", "is", null)
-      .not("outcome_final_at", "is", null)
-      .gte("outcome_final_at", windowStartStr)
-      .limit(50000);
+    // Supabase (PostgREST) caps responses at ~1000 rows regardless of
+    // .limit(). Paginate with .range() to get all training data.
+    const PAGE = 1000;
+    const rows = [];
+    let page = 0;
+    while (true) {
+      const lo = page * PAGE;
+      const hi = lo + PAGE - 1;
+      const { data: batch, error: qErr } = await sb
+        .from("predictions")
+        .select("features, outcome, outcome_final_at")
+        .not("outcome", "is", null)
+        .not("outcome_final_at", "is", null)
+        .gte("outcome_final_at", windowStartStr)
+        .range(lo, hi);
+      if (qErr) throw new Error(`Query failed (page ${page}): ${qErr.message}`);
+      if (batch) rows.push(...batch);
+      if (!batch || batch.length < PAGE) break;
+      page++;
+      if (page >= 100) break; // safety: 100k max
+    }
 
-    if (qErr) throw new Error(`Query failed: ${qErr.message}`);
-
-    if (!rows || rows.length === 0) {
+    if (rows.length === 0) {
       return res.status(200).json({
         status: "skipped",
         reason: "no_closed_predictions",
