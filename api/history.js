@@ -1,43 +1,45 @@
 // nexo — prediction history endpoint.
 //
-// GET /api/history?minProb=0.18&prop=alegria&verdict=all&limit=500
+// GET /api/history?minProb=0.18&prop=alegria&verdict=all&limit=2000
 //
-// Returns every closed prediction where the live model flagged the
-// reservation as MEDIUM risk or higher (predicted_prob >= 0.18) together
-// with the ground-truth outcome, so staff can audit the tool reservation
-// by reservation — "Reserva X teve 87% de prob, e de facto cancelou".
+// The "Histórico" tab's data source. For every reservation with a known
+// outcome, returns the model's prediction alongside the ground truth so
+// staff can audit case by case — "Reserva X teve 87%, cancelou mesmo".
 //
-// Excludes model_version='backfill-v1' rows: those are historical Mews
-// imports with a placeholder predicted_prob=0 and no real prediction was
-// ever made. Including them would always count as "false negative" and
-// poison the accuracy stats. The /api/model endpoint applies the same
-// filter for the same reason.
+// Two kinds of rows get folded into one stream:
 //
-// Response shape (kept small enough for client-side filtering/search):
-// {
-//   rows: [{
-//     reservation_id, prop, guest, arrival, nights, rate, channel, adr,
-//     lead_time_days, country, predicted_prob, level, model_version,
-//     snapshot_date, outcome, outcome_final_at, verdict, top_factors
-//   }, ...],
-//   totals: { all, hits, false_alarms, missed, stayed_ok }
-// }
+//   1. LIVE predictions  — model_version != 'backfill-v1' AND
+//                          predicted_prob > 0. The dashboard scored these
+//                          at booking time; predicted_prob is what the
+//                          model actually said that day.
 //
-// verdict classification (from the model's perspective, threshold 0.5):
-//   hit           predicted cancel (prob >= 0.5)  AND actually cancelled
-//   false_alarm   predicted cancel (prob >= 0.5)  AND actually stayed
-//   missed        predicted stay   (prob <  0.5)  AND actually cancelled  *
-//   stayed_ok     predicted stay   (prob <  0.5)  AND actually stayed
+//   2. RETROSPECTIVE predictions — model_version == 'backfill-v1' OR
+//                                   predicted_prob == 0 (placeholder).
+//                                   These are historical Mews imports
+//                                   whose feature vectors we preserved
+//                                   but never scored. Here we run the
+//                                   current active model over them so
+//                                   the user can still see the "what
+//                                   would the model have said" answer.
+//                                   Rows are marked `retrospective: true`.
 //
-// * missed only surfaces here if level was MEDIUM (0.18-0.38) — the
-//   panel filters at 0.18 so true LOW misses are invisible.
+// Without the retrospective bucket the panel is empty until many live
+// predictions mature — weeks of waiting. With it, the full 15-month
+// backfill is immediately inspectable.
+//
+// verdict classification (threshold 0.5):
+//   hit           prob >= 0.5  AND outcome in {cancelled, no_show}
+//   false_alarm   prob >= 0.5  AND outcome == stayed
+//   missed        prob <  0.5  AND outcome in {cancelled, no_show}
+//   stayed_ok     prob <  0.5  AND outcome == stayed
 
 import { getServerClient } from "../lib/supabase.js";
 import { applyCors } from "../lib/cors.js";
 import { extractRiskFactors } from "../lib/features.js";
+import { computeRisk } from "./score.js";
 
 const DEFAULT_MIN_PROB = 0.18;   // MEDIUM floor, matches the 18% UI threshold
-const HARD_LIMIT       = 2000;   // never send more than this to the client
+const HARD_LIMIT       = 2000;   // never ship more than this to the client
 const PAGE             = 1000;   // Supabase/PostgREST page size
 
 function classifyVerdict(predictedProb, outcome) {
@@ -47,6 +49,20 @@ function classifyVerdict(predictedProb, outcome) {
   if (predCancel && !actualCancel) return "false_alarm";
   if (!predCancel && actualCancel) return "missed";
   return "stayed_ok";
+}
+
+async function loadActiveModel(sb) {
+  try {
+    const { data: row } = await sb
+      .from("model_weights")
+      .select("version, coefs")
+      .eq("is_active", true)
+      .maybeSingle();
+    return row || null;
+  } catch (err) {
+    console.warn("[history] active model load failed:", err.message);
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -63,44 +79,81 @@ export default async function handler(req, res) {
 
   try {
     const sb = getServerClient();
+    const activeModel = await loadActiveModel(sb);
+    const activeWeights = activeModel?.coefs || null;
+    const activeVersion = activeModel?.version || "hand-tuned-v1";
 
-    // Paginate — PostgREST caps each response at ~1000 rows regardless
-    // of .limit(). Same pattern used in api/train.js after PR #21.
+    // Fetch ALL rows with outcomes (live + backfill). We score the
+    // backfill rows below using the active model before filtering by
+    // minProb, so the MEDIUM floor applies to retrospective predictions
+    // too.
     const rows = [];
     let page = 0;
-    while (rows.length < limit) {
+    // Oversample: for backfill rows we don't know the prob yet, so the
+    // server-side gte filter would wrongly drop them. Fetch everything
+    // and filter after scoring. We cap at 10× HARD_LIMIT raw rows to
+    // keep Supabase happy.
+    const rawCap = Math.max(HARD_LIMIT * 10, 20000);
+    while (rows.length < rawCap) {
       const lo = page * PAGE;
-      const hi = Math.min(lo + PAGE - 1, limit - 1);
+      const hi = lo + PAGE - 1;
       const { data: batch, error } = await sb
         .from("predictions")
         .select("reservation_id, prop, snapshot_date, features, predicted_prob, score, level, model_version, outcome, outcome_final_at")
         .not("outcome", "is", null)
-        .neq("model_version", "backfill-v1")
-        .gte("predicted_prob", minProb)
         .order("outcome_final_at", { ascending: false })
         .range(lo, hi);
       if (error) throw new Error(`History query failed (page ${page}): ${error.message}`);
       if (batch) rows.push(...batch);
       if (!batch || batch.length < PAGE) break;
       page++;
-      if (page >= 10) break;  // 10k safety cap (HARD_LIMIT already caps earlier)
+      if (page >= 20) break;  // 20k raw rows absolute ceiling
     }
 
-    // Shape for client. Keeps only the fields the panel actually renders
-    // — features column is too large to ship every key.
-    const shaped = rows.map(r => {
+    // Score the retrospective rows and shape every row for the client.
+    // We compute prob once per row — O(N) where N = rows fetched — then
+    // filter afterward. This is cheap: a logistic dot product is ~30
+    // ops, a GBM tree walk is ~5 per tree × few hundred trees max.
+    const shaped = [];
+    for (const r of rows) {
       const f = r.features || {};
-      const verdict = classifyVerdict(r.predicted_prob, r.outcome);
-      // extractRiskFactors returns the UI-friendly "why the score is
-      // high" list. Cheap enough to compute per row since it's just
-      // string checks — no heavy math.
+      const isBackfill = r.model_version === "backfill-v1" || !r.predicted_prob;
+      let predictedProb = r.predicted_prob || 0;
+      let level = r.level;
+      let score = r.score;
+      let retrospective = false;
+
+      if (isBackfill) {
+        // Run the active model over the stored feature vector. computeRisk
+        // returns { score, level, prob, override, factors } where prob is
+        // 0-100; we divide to stay consistent with the 0-1 live value.
+        try {
+          const risk = computeRisk(f, activeWeights);
+          predictedProb = (risk.prob || 0) / 100;
+          level = risk.level;
+          score = risk.score;
+          retrospective = true;
+        } catch (err) {
+          // If a row has malformed features, skip it silently. Throwing
+          // would take down the whole response for one bad row.
+          continue;
+        }
+      }
+
+      if (predictedProb < minProb) continue;
+
+      const verdict = classifyVerdict(predictedProb, r.outcome);
+
+      // extractRiskFactors returns the UI-friendly "why is this risky"
+      // strings. Cheap (just string checks) — ~µs per call.
       let topFactors = [];
       try {
         topFactors = extractRiskFactors(f).slice(0, 3);
       } catch {
         topFactors = [];
       }
-      return {
+
+      shaped.push({
         reservation_id: r.reservation_id,
         prop: r.prop,
         guest: f.guest || "—",
@@ -114,21 +167,24 @@ export default async function handler(req, res) {
         lead_time_days: f.leadTimeDays ?? f.daysUntil ?? null,
         country: f.nationality || "",
         persons: f.persons || 0,
-        predicted_prob: r.predicted_prob,
-        score: r.score,
-        level: r.level,
-        model_version: r.model_version,
+        predicted_prob: predictedProb,
+        score,
+        level,
+        model_version: retrospective ? `retro:${activeVersion}` : r.model_version,
         snapshot_date: r.snapshot_date,
         outcome: r.outcome,
         outcome_final_at: r.outcome_final_at,
         verdict,
+        retrospective,
         top_factors: topFactors
-      };
-    });
+      });
 
-    // Optional server-side filtering. Client can also filter locally
-    // but passing through narrows the payload when the user knows what
-    // they want.
+      if (shaped.length >= limit) break;
+    }
+
+    // Filters are applied AFTER scoring so the retrospective bucket is
+    // included in the verdict counts even when the user narrows to e.g.
+    // "Falsos alarmes".
     let filtered = shaped;
     if (propFilter) {
       const p = propFilter.toLowerCase();
@@ -138,21 +194,24 @@ export default async function handler(req, res) {
       filtered = filtered.filter(r => r.verdict === verdictFilter);
     }
 
-    // Totals — computed from `shaped` (pre-filter) so the sidebar
-    // counts are stable as the user flips between verdict chips.
+    // Totals computed from `shaped` (pre-verdict-filter) so the chip
+    // counts stay stable as the user clicks between verdicts.
     const totals = shaped.reduce(
       (acc, r) => {
         acc.all++;
         acc[r.verdict]++;
+        if (r.retrospective) acc.retrospective++;
+        else acc.live++;
         return acc;
       },
-      { all: 0, hit: 0, false_alarm: 0, missed: 0, stayed_ok: 0 }
+      { all: 0, hit: 0, false_alarm: 0, missed: 0, stayed_ok: 0, retrospective: 0, live: 0 }
     );
 
     return res.status(200).json({
       rows: filtered,
       totals,
       min_prob: minProb,
+      active_model_version: activeVersion,
       fetched_at: new Date().toISOString()
     });
   } catch (err) {
