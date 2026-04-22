@@ -488,7 +488,7 @@ body{
 // ─── NAMESPACE ───
 const nexo=(function(){
   // Global state
-  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false,backfilling:false,lastBackfill:null};
+  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false,backfilling:false,lastBackfill:null,history:null,historyLoading:false,historyVerdict:"all",historySel:null,historySelDate:null};
   let data={reservations:[],availability:{},overbooking:[],obMap:{},log:[],calibratedWeights:null,weatherCache:{},serviceId:null,serviceIds:{},propKeyByName:{}};
   let pendingFiles=[];
   let propShorthand={};
@@ -1098,7 +1098,7 @@ const nexo=(function(){
 
     // Tabs
     h+=`<div class="tabs">`;
-    [{id:"timeline",l:"Timeline"},{id:"overbooking",l:"Overbooking"},{id:"retention",l:"Ações"},{id:"periods",l:"Períodos"},{id:"modelo",l:"Modelo"}].forEach(t=>{h+=`<button class="tab${state.tab===t.id?" on":""}" onclick="nexo.selectTab('${t.id}')">${t.l}</button>`});
+    [{id:"timeline",l:"Timeline"},{id:"overbooking",l:"Overbooking"},{id:"retention",l:"Ações"},{id:"periods",l:"Períodos"},{id:"historico",l:"Histórico"},{id:"modelo",l:"Modelo"}].forEach(t=>{h+=`<button class="tab${state.tab===t.id?" on":""}" onclick="nexo.selectTab('${t.id}')">${t.l}</button>`});
     h+=`<div class="nav"><button class="nbtn" onclick="nexo.prevDays()">◀</button><button class="nbtn on" onclick="nexo.goToday()">Hoje</button><button class="nbtn" onclick="nexo.nextDays()">▶</button>`;
     [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${state.viewDays===d?" on":""}" onclick="nexo.setViewDays(${d})">${d}d</button>`});
     h+=`</div></div><div class="content"><div class="main">`;
@@ -1111,6 +1111,9 @@ const nexo=(function(){
     else if(state.tab==="retention"){h+=renderRetention(ret)}
     // Periods Tab
     else if(state.tab==="periods"){h+=renderPeriods()}
+    // History Tab — audit panel: each prediction vs actual outcome.
+    // Data is fetched by selectTab() when the user clicks it.
+    else if(state.tab==="historico"){h+=renderHistory()}
     // Model Tab — metrics are fetched by selectTab() when the user clicks it
     else if(state.tab==="modelo"){h+=renderModel()}
 
@@ -1384,6 +1387,214 @@ const nexo=(function(){
     return h;
   }
 
+  // ─── HISTORY TAB ───────────────────────────────────────
+  // Audit panel. Left column = scrollable list of every HIGH/MEDIUM
+  // prediction with a known outcome, color-coded by verdict. Right
+  // column = rich detail for the currently-selected row (guest, dates,
+  // what the model said, what actually happened, top risk factors).
+  // Excludes backfill-v1 rows — /api/history already filters them.
+  function historyVerdictChip(v){
+    if(v==="hit")         return `<span style="background:#0B8040;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">ACERTOU</span>`;
+    if(v==="false_alarm") return `<span style="background:#C0392B;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">FALSO ALARME</span>`;
+    if(v==="missed")      return `<span style="background:#E67E22;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">ESCAPOU</span>`;
+    return `<span style="background:#7F8C8D;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">OK</span>`;
+  }
+
+  function historyProbBadge(p){
+    const pct=Math.round((p||0)*100);
+    const bg=pct>=50?"#C0392B":pct>=38?"#E67E22":"#7F8C8D";
+    return `<span style="background:${bg};color:#fff;padding:3px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-weight:800;font-size:11px">${pct}%</span>`;
+  }
+
+  function fmtDate(d){
+    if(!d)return"—";
+    try{return new Date(d).toLocaleDateString("pt-PT",{day:"2-digit",month:"short",year:"2-digit"})}catch{return d}
+  }
+
+  // Minimal HTML-entity escape for template-literal interpolation of
+  // user-supplied strings (guest names, rates, nationalities). Guards
+  // against a cancelled booking with "<script>" in the guest field
+  // breaking layout or worse.
+  function escapeHtml(s){
+    if(s==null)return"";
+    return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function renderHistory(){
+    if(state.historyLoading){
+      return `<div class="tbl" style="padding:40px;text-align:center;color:#666;font-family:Fraunces,serif;font-style:italic">A carregar histórico...</div>`;
+    }
+    const hst=state.history;
+    if(!hst){
+      return `<div class="tbl" style="padding:40px;text-align:center">
+        <p style="font-family:Fraunces,serif;font-style:italic;color:#666;margin-bottom:16px">Ainda não há dados.</p>
+        <button class="btn" onclick="nexo.loadHistory()" style="padding:8px 16px">Carregar histórico</button>
+      </div>`;
+    }
+
+    const rows=hst.rows||[];
+    const totals=hst.totals||{all:0,hit:0,false_alarm:0,missed:0,stayed_ok:0};
+
+    // Selected row — either the one the user clicked, or the top of the
+    // currently-filtered list. null only if there are zero rows.
+    let selected=null;
+    if(state.historySel){
+      selected=rows.find(r=>r.reservation_id===state.historySel && r.snapshot_date===state.historySelDate) || null;
+    }
+    if(!selected && rows.length>0) selected=rows[0];
+
+    let h=`<div style="display:grid;grid-template-columns:420px 1fr;gap:24px;align-items:start">`;
+
+    // ─── LEFT COLUMN: filters + scrollable list ───
+    h+=`<div style="display:flex;flex-direction:column;gap:12px">`;
+
+    // Verdict filter chips
+    const chip=(id,label,count,color)=>{
+      const on=state.historyVerdict===id;
+      return `<button onclick="nexo.setHistoryVerdict('${id}')" style="padding:6px 10px;border-radius:99px;border:${on?`2px solid ${color}`:"1px solid #ddd"};background:${on?color+"20":"#fff"};color:${on?color:"#333"};font-weight:${on?"800":"600"};font-size:11px;cursor:pointer;letter-spacing:.02em">${label} <span style="opacity:.7">${count}</span></button>`;
+    };
+    h+=`<div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${chip("all","Todos",totals.all,"#333")}
+      ${chip("hit","Acertos",totals.hit,"#0B8040")}
+      ${chip("false_alarm","Falsos alarmes",totals.false_alarm,"#C0392B")}
+      ${chip("missed","Escaparam",totals.missed,"#E67E22")}
+      ${chip("stayed_ok","OK baixo risco",totals.stayed_ok,"#7F8C8D")}
+    </div>`;
+
+    // Headline: hit rate on flagged reservations
+    const flagged=totals.hit+totals.false_alarm;
+    const hitRate=flagged>0?Math.round(100*totals.hit/flagged):null;
+    h+=`<div style="padding:12px 14px;background:#F9F5E9;border:1px solid #E6DFCB;border-radius:4px;font-family:Fraunces,serif">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:4px">Quando o modelo disse "vai cancelar"</div>
+      <div style="font-size:22px;font-weight:800;color:#1A1A1A">${hitRate===null?"—":hitRate+"%"} acertou</div>
+      <div style="font-size:11px;color:#666;margin-top:2px">${totals.hit} acertos em ${flagged} alarmes</div>
+    </div>`;
+
+    // Row list — virtual-ish scroll, natural overflow
+    if(rows.length===0){
+      h+=`<div style="padding:24px;text-align:center;color:#999;font-style:italic;border:1px dashed #ddd;border-radius:4px">Nenhuma reserva corresponde ao filtro</div>`;
+    }else{
+      h+=`<div style="max-height:70vh;overflow-y:auto;border:1px solid #E6DFCB;border-radius:4px;background:#fff">`;
+      rows.forEach(r=>{
+        const sel=selected && r.reservation_id===selected.reservation_id && r.snapshot_date===selected.snapshot_date;
+        const rowBg=sel?"#FDF8E8":"#fff";
+        const border=sel?"2px solid #E8FF5B":"1px solid #F0EBD8";
+        h+=`<div onclick="nexo.selectHistoryRow('${r.reservation_id}','${r.snapshot_date}')" style="padding:10px 12px;border-bottom:${border};background:${rowBg};cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
+          <div style="min-width:0">
+            <div style="font-weight:700;font-size:13px;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.guest||"—")}</div>
+            <div style="font-size:10.5px;color:#666;margin-top:2px">${escapeHtml(r.prop||"")} • ${fmtDate(r.arrival)}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">
+            ${historyProbBadge(r.predicted_prob)}
+            ${historyVerdictChip(r.verdict)}
+          </div>
+        </div>`;
+      });
+      h+=`</div>`;
+    }
+    h+=`</div>`;
+
+    // ─── RIGHT COLUMN: detail ───
+    h+=`<div>`;
+    if(!selected){
+      h+=`<div style="padding:60px;text-align:center;border:1px dashed #E6DFCB;border-radius:4px;color:#999;font-family:Fraunces,serif;font-style:italic">Selecciona uma reserva à esquerda</div>`;
+    }else{
+      h+=renderHistoryDetail(selected);
+    }
+    h+=`</div>`;
+
+    h+=`</div>`;
+    return h;
+  }
+
+  function renderHistoryDetail(r){
+    const pct=Math.round((r.predicted_prob||0)*100);
+    const cancelled=r.outcome==="cancelled"||r.outcome==="no_show";
+
+    // Plain-language verdict headline — the whole point of the panel
+    let verdictBig="", verdictColor="", verdictExplain="";
+    if(r.verdict==="hit"){
+      verdictBig="Acertou";
+      verdictColor="#0B8040";
+      verdictExplain=`Previu ${pct}% de probabilidade de cancelamento e a reserva ${r.outcome==="no_show"?"foi no-show":"foi cancelada"}.`;
+    }else if(r.verdict==="false_alarm"){
+      verdictBig="Falso alarme";
+      verdictColor="#C0392B";
+      verdictExplain=`Previu ${pct}% de probabilidade de cancelamento mas o hóspede apareceu e ficou.`;
+    }else if(r.verdict==="missed"){
+      verdictBig="Escapou";
+      verdictColor="#E67E22";
+      verdictExplain=`Previu apenas ${pct}% — no limite do MEDIUM — e a reserva ${r.outcome==="no_show"?"foi no-show":"foi cancelada"}.`;
+    }else{
+      verdictBig="Baixo risco confirmado";
+      verdictColor="#7F8C8D";
+      verdictExplain=`Previu ${pct}% de cancelamento e a reserva foi honrada.`;
+    }
+
+    let h=`<div style="border:1px solid #E6DFCB;border-radius:4px;background:#fff;padding:24px">`;
+
+    // Headline
+    h+=`<div style="border-bottom:1px solid #F0EBD8;padding-bottom:16px;margin-bottom:18px">
+      <div style="font-family:Fraunces,serif;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:${verdictColor};font-weight:800;margin-bottom:6px">${verdictBig}</div>
+      <div style="font-family:Fraunces,serif;font-size:26px;line-height:1.15;color:#1A1A1A;font-weight:600;margin-bottom:10px">${escapeHtml(r.guest||"—")}</div>
+      <div style="font-family:Fraunces,serif;font-size:14px;color:#444;line-height:1.5">${verdictExplain}</div>
+    </div>`;
+
+    // Big prob + outcome
+    h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">`;
+    h+=`<div style="padding:14px;background:#FBFAF4;border-radius:4px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px">O modelo disse</div>
+      <div style="font-family:JetBrains Mono,monospace;font-size:32px;font-weight:800;color:${pct>=50?"#C0392B":pct>=38?"#E67E22":"#1A1A1A"}">${pct}%</div>
+      <div style="font-size:11px;color:#666;margin-top:2px">prob. de cancelamento • nível ${r.level}</div>
+    </div>`;
+    h+=`<div style="padding:14px;background:${cancelled?"#FDEDEC":"#EAFAF1"};border-radius:4px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px">Realmente</div>
+      <div style="font-family:Fraunces,serif;font-size:22px;font-weight:700;color:${cancelled?"#C0392B":"#0B8040"}">${cancelled?(r.outcome==="no_show"?"Não apareceu":"Cancelou"):"Ficou"}</div>
+      <div style="font-size:11px;color:#666;margin-top:4px">${r.outcome_final_at?"em "+fmtDate(r.outcome_final_at):""}</div>
+    </div>`;
+    h+=`</div>`;
+
+    // Reservation facts grid
+    const fact=(label,val)=>`<div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:3px">${label}</div>
+      <div style="font-family:Fraunces,serif;font-size:14px;color:#1A1A1A">${val||"—"}</div>
+    </div>`;
+    h+=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 18px;margin-bottom:20px">`;
+    h+=fact("Propriedade",escapeHtml(r.prop||""));
+    h+=fact("Chegada",fmtDate(r.arrival));
+    h+=fact("Noites",r.nights);
+    h+=fact("Canal",escapeHtml(r.channel||""));
+    h+=fact("Tarifa",escapeHtml(r.rate||""));
+    h+=fact("ADR",r.adr?"€"+Math.round(r.adr):"—");
+    h+=fact("Total",r.total?"€"+Math.round(r.total):"—");
+    h+=fact("Lead time",r.lead_time_days!=null?r.lead_time_days+" dias":"—");
+    h+=fact("País",escapeHtml(r.country||""));
+    h+=`</div>`;
+
+    // Why the score was what it was
+    if(r.top_factors && r.top_factors.length>0){
+      h+=`<div style="border-top:1px solid #F0EBD8;padding-top:16px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">Factores que mais pesaram</div>
+        <div style="display:flex;flex-direction:column;gap:6px">`;
+      r.top_factors.forEach(f=>{
+        h+=`<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:#FBFAF4;border-radius:3px;font-family:Fraunces,serif;font-size:13px">
+          <span style="font-size:14px">•</span>
+          <span style="color:#333">${escapeHtml(typeof f==="string"?f:(f.label||f.name||""))}</span>
+        </div>`;
+      });
+      h+=`</div></div>`;
+    }
+
+    // Footer meta
+    h+=`<div style="border-top:1px solid #F0EBD8;padding-top:12px;margin-top:20px;font-size:10px;color:#999;font-family:JetBrains Mono,monospace;display:flex;justify-content:space-between">
+      <span>Previsão feita em ${fmtDate(r.snapshot_date)}</span>
+      <span>${escapeHtml(r.model_version||"")}</span>
+    </div>`;
+
+    h+=`</div>`;
+    return h;
+  }
+
   function renderModel(){
     const m=state.modelMetrics;
     let h=`<div class="tbl" style="max-width:1200px">`;
@@ -1599,6 +1810,29 @@ const nexo=(function(){
     }
   }
 
+  // ─── HISTORY TAB FETCH ───
+  // Lazy-loads the audit panel payload. Called by selectTab('historico')
+  // the first time the user visits and by the manual "Recarregar" button
+  // if they want fresher data. Never cached across page loads — cheap
+  // enough to re-fetch on demand and always up to date.
+  async function loadHistory(){
+    if(state.historyLoading)return;
+    state.historyLoading=true;state.historySel=null;render();
+    try{
+      const resp=await fetch("/api/history?minProb=0.18&limit=2000",{method:"GET",headers:{"Accept":"application/json"}});
+      if(!resp.ok){
+        const txt=await resp.text().catch(()=>"");
+        throw new Error("Falha a carregar histórico ("+resp.status+"): "+txt.slice(0,160));
+      }
+      state.history=await resp.json();
+    }catch(e){
+      addLog("Histórico: "+e.message);
+      state.history=null;
+    }finally{
+      state.historyLoading=false;render();
+    }
+  }
+
   async function retrainModel(){
     if(state.retraining)return;
     if(!confirm("Forçar retreino do modelo agora?\n\nIsto lê as predições fechadas dos últimos 12 meses, ajusta uma nova regressão logística, e substitui o modelo activo se o AUC melhorar."))return;
@@ -1721,16 +1955,41 @@ const nexo=(function(){
   return{
     render,fetchFromMews,scoreAndProcessReservations,
     addNote,addTask,addNoteById,addTaskById,openForSale,bulkAddNotes,bulkAddTasks,generateWeeklyReport,
-    loadModelMetrics,retrainModel,backfillHistory,restoreFromCache,
+    loadModelMetrics,retrainModel,backfillHistory,restoreFromCache,loadHistory,
     clearCacheAndReload:()=>{clearCache();data.reservations=[];data.availability={};data.overbooking=[];state.phase="upload";state.sel=null;render()},
     selectProperty:p=>{state.prop=p;state.sel=null;render()},
-    selectTab:t=>{state.tab=t;if(t==="modelo"&&!state.modelMetrics&&!state.modelLoading)loadModelMetrics();else render()},
+    selectTab:t=>{
+      state.tab=t;
+      // Lazy-load: only hit the network the first time a heavy tab is opened.
+      if(t==="modelo"&&!state.modelMetrics&&!state.modelLoading)loadModelMetrics();
+      else if(t==="historico"&&!state.history&&!state.historyLoading)loadHistory();
+      else render();
+    },
     setViewDays:d=>{state.viewDays=d;render()},
     prevDays:()=>{const d=new Date(state.vs+"T12:00:00");d.setDate(d.getDate()-state.viewDays);state.vs=d.toISOString().split("T")[0];render()},
     nextDays:()=>{const d=new Date(state.vs+"T12:00:00");d.setDate(d.getDate()+state.viewDays);state.vs=d.toISOString().split("T")[0];render()},
     goToday:()=>{const d=new Date();d.setDate(d.getDate()-1);state.vs=d.toISOString().split("T")[0];render()},
     selectReservation:id=>{state.sel=data.reservations.find(r=>r.id===id)||null;render()},
-    clearSelection:()=>{state.sel=null;render()}
+    clearSelection:()=>{state.sel=null;render()},
+    // History-tab actions. selectHistoryRow takes (id, snapshot_date)
+    // because a reservation can have multiple snapshots (one per day it
+    // was scored before the outcome landed); the composite key picks the
+    // exact row the user clicked.
+    selectHistoryRow:(id,snapshotDate)=>{state.historySel=id;state.historySelDate=snapshotDate;render()},
+    setHistoryVerdict:v=>{
+      state.historyVerdict=v;
+      // Re-fetch with server-side filter — cheaper than client filtering
+      // once the row count grows and the verdict totals stay in sync.
+      if(!state.historyLoading){
+        state.historyLoading=true;state.historySel=null;render();
+        const q=v==="all"?"":("&verdict="+encodeURIComponent(v));
+        fetch("/api/history?minProb=0.18&limit=2000"+q,{headers:{"Accept":"application/json"}})
+          .then(r=>r.json())
+          .then(d=>{state.history=d})
+          .catch(e=>{addLog("Histórico: "+e.message);state.history=null})
+          .finally(()=>{state.historyLoading=false;render()});
+      }
+    }
   }
 })();
 
