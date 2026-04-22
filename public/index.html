@@ -1470,6 +1470,15 @@ const nexo=(function(){
       <div style="font-size:11px;color:#666;margin-top:2px">${totals.hit} acertos em ${flagged} alarmes</div>
     </div>`;
 
+    // Retrospective disclosure. Live predictions and historical retro-
+    // scored ones coexist in the same list — make the distinction visible
+    // so the user isn't surprised when 95% of rows are "retro".
+    if(totals.retrospective>0){
+      h+=`<div style="padding:8px 12px;background:#EEF2F7;border:1px solid #D6DEE8;border-radius:4px;font-size:10.5px;color:#4A5568;line-height:1.5">
+        <strong>${totals.retrospective} retroactivas</strong> + ${totals.live} live. As retroactivas são reservas antigas re-pontuadas agora com o modelo activo — dizem "o que o modelo teria dito em ${fmtDate(hst.fetched_at)}", não o que disse no dia.
+      </div>`;
+    }
+
     // Row list — virtual-ish scroll, natural overflow
     if(rows.length===0){
       h+=`<div style="padding:24px;text-align:center;color:#999;font-style:italic;border:1px dashed #ddd;border-radius:4px">Nenhuma reserva corresponde ao filtro</div>`;
@@ -1479,9 +1488,10 @@ const nexo=(function(){
         const sel=selected && r.reservation_id===selected.reservation_id && r.snapshot_date===selected.snapshot_date;
         const rowBg=sel?"#FDF8E8":"#fff";
         const border=sel?"2px solid #E8FF5B":"1px solid #F0EBD8";
+        const retroDot=r.retrospective?`<span title="Retroactiva — re-pontuada agora" style="display:inline-block;width:6px;height:6px;background:#9CA3AF;border-radius:99px;margin-right:5px;vertical-align:middle"></span>`:"";
         h+=`<div onclick="nexo.selectHistoryRow('${r.reservation_id}','${r.snapshot_date}')" style="padding:10px 12px;border-bottom:${border};background:${rowBg};cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
           <div style="min-width:0">
-            <div style="font-weight:700;font-size:13px;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.guest||"—")}</div>
+            <div style="font-weight:700;font-size:13px;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${retroDot}${escapeHtml(r.guest||"—")}</div>
             <div style="font-size:10.5px;color:#666;margin-top:2px">${escapeHtml(r.prop||"")} • ${fmtDate(r.arrival)}</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">
@@ -1532,6 +1542,13 @@ const nexo=(function(){
     }
 
     let h=`<div style="border:1px solid #E6DFCB;border-radius:4px;background:#fff;padding:24px">`;
+
+    // Retrospective banner — only when this specific row was re-scored
+    if(r.retrospective){
+      h+=`<div style="background:#EEF2F7;color:#4A5568;padding:8px 12px;border-radius:4px;font-size:11px;margin-bottom:14px;line-height:1.45">
+        <strong>Retroactiva.</strong> Esta reserva é anterior à ferramenta — o modelo activo foi aplicado agora aos dados históricos. A previsão abaixo é "o que o modelo diria se tivesse visto esta reserva em ${fmtDate(r.snapshot_date)}".
+      </div>`;
+    }
 
     // Headline
     h+=`<div style="border-bottom:1px solid #F0EBD8;padding-bottom:16px;margin-bottom:18px">
