@@ -33,7 +33,11 @@ FEATURE_NAMES = [
     "repeat", "card", "mod", "sea", "persons", "dow",
     "otaEmail", "nat", "natMiss", "agency", "noContact", "solo",
     "bookHour", "modCount", "adrVsAvg", "bookPayGap", "multiBook", "weather",
-    "isRelay", "isGenius", "lateArrival"
+    "isRelay", "isGenius", "lateArrival",
+    # ─── Phase 1 (Apr 2026) — leak-safe derived signals ───
+    "checkedIn",         # Binary: guest did online check-in → strong negative
+    "shortMidweek",      # Binary: nights <= 2 AND arrival on Tue/Wed/Thu
+    "channelMonthRate"   # Cohort: observed cancel rate for (channel × month)
 ]
 
 # Leak-safe subset used for TRAINING only. Mirrors LEAK_SAFE_FEATURE_NAMES in
@@ -306,9 +310,77 @@ def score_weather(code) -> int:
     return 50
 
 
+# ─── PHASE 1 SCORERS ───
+
+def score_checked_in(v) -> int:
+    """1 if guest did online check-in, else 0. Strong negative signal — such
+    guests almost never cancel. Mirrors scoreCheckedIn in lib/features.js."""
+    return 1 if v else 0
+
+
+def score_short_midweek(nights, arrival) -> int:
+    """1 if short stay (<=2 nights) on a midweek day (Tue/Wed/Thu arrival),
+    else 0. Captures the business-travel profile as a single interaction
+    feature so the GBM doesn't have to learn (nights AND dow) from scratch.
+    Mirrors scoreShortMidweek in lib/features.js."""
+    try:
+        n = int(nights or 0)
+    except (TypeError, ValueError):
+        return 0
+    if n <= 0 or n > 2:
+        return 0
+    if not arrival:
+        return 0
+    try:
+        # JS Date.getDay(): Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6
+        py_dow = datetime.strptime(arrival + "T12:00:00", "%Y-%m-%dT%H:%M:%S").weekday()
+        js_dow = (py_dow + 1) % 7  # Python Mon=0 → JS Tue=2 requires +1 mod 7
+        return 1 if js_dow in (2, 3, 4) else 0
+    except ValueError:
+        return 0
+
+
+def channel_bucket(s) -> str:
+    """Collapse raw Mews source strings to 8 stable buckets. MUST match
+    channelBucket in lib/features.js exactly — the cohort lookup table is
+    keyed by bucket_month, so JS and Python have to agree on the bucket."""
+    l = (s or "").lower()
+    if "booking.com" in l:                                               return "booking"
+    if "airbnb" in l:                                                    return "airbnb"
+    if "expedia" in l or "hotels.com" in l:                              return "expedia"
+    if "telephone" in l or "phone" in l:                                 return "phone"
+    if "in person" in l:                                                 return "walkin"
+    if ("booking engine" in l or "connector" in l
+            or "distributor" in l or "commander" in l):                  return "direct"
+    if "email" in l or "message" in l:                                   return "message"
+    return "other"
+
+
+def score_channel_month_rate(source, arr_month, cohort_rates) -> int:
+    """Look up the (channel_bucket, arrival_month) cancel rate. Returns 0-100
+    (percent). Falls back to the overall rate stored under "_all", then 33
+    (global prior) if everything is missing. Mirrors scoreChannelMonthRate."""
+    if not cohort_rates or not isinstance(cohort_rates, dict):
+        return 33
+    bucket = channel_bucket(source)
+    key = f"{bucket}_{arr_month or 0}"
+    cell = cohort_rates.get(key)
+    if cell and isinstance(cell.get("rate"), (int, float)) and cell.get("count", 0) >= 30:
+        return round(float(cell["rate"]) * 100)
+    overall = cohort_rates.get("_all")
+    if overall and isinstance(overall.get("rate"), (int, float)):
+        return round(float(overall["rate"]) * 100)
+    return 33
+
+
 # ─── VECTOR ───
-def extract_feature_vector(r: dict) -> dict:
-    """Return dict keyed by FEATURE_NAMES, mirrors lib/features.js exactly."""
+def extract_feature_vector(r: dict, cohort_rates: dict = None) -> dict:
+    """Return dict keyed by FEATURE_NAMES, mirrors lib/features.js exactly.
+
+    `cohort_rates` is optional — when absent, score_channel_month_rate
+    returns the global prior. train_gbm.py passes the freshly-computed table
+    during training; inference-time callers read it from the stored model.
+    """
     pay = (r.get("paymentStatus") or r.get("payment") or "").lower().strip()
     email = r.get("email") or ""
     return {
@@ -339,6 +411,10 @@ def extract_feature_vector(r: dict) -> dict:
         "isRelay":    1 if r.get("isRelay") else 0,
         "isGenius":   1 if r.get("isGenius") else 0,
         "lateArrival": 1 if r.get("lateArrival") else 0,
+        # Phase 1 additions — see lib/features.js for contract docs
+        "checkedIn":        score_checked_in(r.get("guestCheckedIn")),
+        "shortMidweek":     score_short_midweek(r.get("nights"), r.get("arrival")),
+        "channelMonthRate": score_channel_month_rate(r.get("source"), r.get("arrMonth"), cohort_rates),
     }
 
 
