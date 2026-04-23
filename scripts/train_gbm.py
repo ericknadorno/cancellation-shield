@@ -422,9 +422,16 @@ def main() -> int:
 
     log(f"Metrics — AUC: {auc:.4f}, Brier: {brier:.4f}, LogLoss: {ll:.4f}, ECE: {ece:.4f}")
 
-    # Version string
-    today = datetime.now(timezone.utc).date().isoformat()
-    short_hash = hashlib.sha256(f"{today}{auc:.4f}".encode()).hexdigest()[:6]
+    # Version string. Hash input includes the full ISO timestamp (with
+    # microseconds) so that two runs with identical training data + identical
+    # AUC still produce distinct version strings. Without this, re-triggering
+    # the workflow (or the new-run collision we hit after the PR C promotion
+    # bug) fails with "duplicate key value violates unique constraint
+    # model_weights_pkey" on the insert.
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.date().isoformat()
+    hash_input = f"{now_utc.isoformat()}-{auc:.6f}"
+    short_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:6]
     version = f"gbm-{today}-{short_hash}"
 
     # Build export and upsert. The model's feature_names is the leak-safe
