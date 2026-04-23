@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>nexo</title> 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- i18n dictionary + t()/setLang() runtime. Loaded first so window.nexoI18n
+     is available inside the main IIFE. See public/i18n.js for contract. -->
+<script src="/i18n.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700;9..144,800;9..144,900&family=Inter+Tight:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -488,7 +491,13 @@ body{
 // ─── NAMESPACE ───
 const nexo=(function(){
   // Global state
-  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false,backfilling:false,lastBackfill:null,history:null,historyLoading:false,historyVerdict:"all",historySel:null,historySelDate:null};
+  let state={prop:"ALL",tab:"timeline",sel:null,viewDays:30,phase:"upload",uping:false,umsg:"",modelMetrics:null,modelLoading:false,retraining:false,backfilling:false,lastBackfill:null,history:null,historyLoading:false,historyVerdict:"all",historySel:null,historySelDate:null,lang:(window.nexoI18n&&window.nexoI18n.getLang())||"en"};
+
+  // Shorthand for translations — every user-facing string goes through this.
+  // Falls back to the raw key (then PT) if a translation is missing, per the
+  // i18n module's contract. Safe to call before nexoI18n loads (returns key).
+  const t=(k,p)=>window.nexoI18n?window.nexoI18n.t(k,p):k;
+  const loc=()=>window.nexoI18n?window.nexoI18n.locale():"en-GB";
   let data={reservations:[],availability:{},overbooking:[],obMap:{},log:[],calibratedWeights:null,weatherCache:{},serviceId:null,serviceIds:{},propKeyByName:{}};
   let pendingFiles=[];
   let propShorthand={};
@@ -1073,34 +1082,43 @@ const nexo=(function(){
     let h="";
 
     // Header
-    h+=`<div class="hdr"><div style="display:flex;align-items:flex-end;gap:14px"><div class="logo"><svg viewBox="182 170 660 660" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="nbg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#E7A4C2"/><stop offset="100%" stop-color="#F04FA0"/></linearGradient><clipPath id="nc"><rect x="182" y="170" width="660" height="660" rx="120"/></clipPath></defs><rect x="182" y="170" width="660" height="660" rx="120" fill="url(#nbg)"/><g clip-path="url(#nc)" fill="#000"><path d="M320 658V340h150l238 238v80h-78L412 440v218H320z"/><circle cx="640" cy="398" r="62"/></g></svg><div><h1>nexo</h1><small>Ed. ${(data.generated||"").split("T")[0]||"—"} · Vol. 1</small></div></div><span class="prod-tag">● LIVE</span></div><div class="btns">`;
-    ["ALL",...properties].forEach(p=>{h+=`<button class="btn${state.prop===p?" on":""}" onclick="nexo.selectProperty('${esc(p)}')">${esc(p==="ALL"?"Todos":p)}</button>`});
-    h+=`<button class="btn api" onclick="nexo.fetchFromMews()" ${state.uping?'disabled':''}>Atualizar</button>`;
-    h+=`<button class="btn grn" onclick="nexo.generateWeeklyReport()">Relatório</button>`;
+    const edDate=(data.generated||"").split("T")[0]||"—";
+    h+=`<div class="hdr"><div style="display:flex;align-items:flex-end;gap:14px"><div class="logo"><svg viewBox="182 170 660 660" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="nbg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#E7A4C2"/><stop offset="100%" stop-color="#F04FA0"/></linearGradient><clipPath id="nc"><rect x="182" y="170" width="660" height="660" rx="120"/></clipPath></defs><rect x="182" y="170" width="660" height="660" rx="120" fill="url(#nbg)"/><g clip-path="url(#nc)" fill="#000"><path d="M320 658V340h150l238 238v80h-78L412 440v218H320z"/><circle cx="640" cy="398" r="62"/></g></svg><div><h1>nexo</h1><small>${esc(t("header.edition",{date:edDate}))}</small></div></div><span class="prod-tag">${t("header.live")}</span>`;
+    // Language selector — small, masthead-style toggle. PT · EN · DE.
+    // Kept compact so DE doesn't push the header into two lines.
+    h+=`<span class="lang-sw" style="display:inline-flex;gap:0;margin-left:14px;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;border:1px solid var(--rule-2);border-radius:3px;overflow:hidden">`;
+    ["pt","en","de"].forEach((lg,i)=>{
+      const on=state.lang===lg;
+      h+=`<button data-action="set-lang" data-lang="${lg}" style="padding:4px 8px;border:0;background:${on?"var(--ink)":"transparent"};color:${on?"var(--paper)":"var(--ink-3)"};font-family:inherit;font-size:inherit;letter-spacing:inherit;cursor:pointer;font-weight:${on?"800":"500"};${i>0?"border-left:1px solid var(--rule-2)":""}">${lg.toUpperCase()}</button>`;
+    });
+    h+=`</span></div><div class="btns">`;
+    ["ALL",...properties].forEach(p=>{h+=`<button class="btn${state.prop===p?" on":""}" onclick="nexo.selectProperty('${esc(p)}')">${esc(p==="ALL"?t("header.allProperties"):p)}</button>`});
+    h+=`<button class="btn api" onclick="nexo.fetchFromMews()" ${state.uping?'disabled':''}>${t("header.refresh")}</button>`;
+    h+=`<button class="btn grn" onclick="nexo.generateWeeklyReport()">${t("header.report")}</button>`;
     h+=`</div></div>`;
 
     // Status
     if(state.umsg)h+=`<div class="status-bar"><div class="dot" style="background:${state.uping?"#FF9500":"#34C759"}"></div>${esc(state.umsg)}</div>`;
     else if(data.cachedAt){
       const ageMin=Math.floor((Date.now()-data.cachedAt)/60000);
-      const ageText=ageMin<1?"agora":ageMin<60?`há ${ageMin} min`:`há ${Math.floor(ageMin/60)}h ${ageMin%60}min`;
+      const ageText=ageMin<1?t("status.cache.now"):ageMin<60?t("status.cache.min",{n:ageMin}):t("status.cache.hour",{h:Math.floor(ageMin/60),m:ageMin%60});
       const isStale=ageMin>60;
-      h+=`<div class="status-bar"><div class="dot" style="background:${isStale?"#E8811E":"#0E8A40"};animation:none"></div>Dados em cache ${ageText}${isStale?" — considera atualizar":""} · <button data-action="clear-cache" style="background:0;border:0;color:var(--accent-ink);font-family:inherit;font-size:inherit;cursor:pointer;text-decoration:underline;padding:0">limpar cache</button></div>`;
+      h+=`<div class="status-bar"><div class="dot" style="background:${isStale?"#E8811E":"#0E8A40"};animation:none"></div>${ageText}${isStale?t("status.cache.stale"):""} · <button data-action="clear-cache" style="background:0;border:0;color:var(--accent-ink);font-family:inherit;font-size:inherit;cursor:pointer;text-decoration:underline;padding:0">${t("status.cache.clear")}</button></div>`;
     }
 
     // KPIs — editorial numerals
     h+=`<div class="kpis">`;
-    h+=`<div class="kpi"><label>Reservas Ativas</label><b>${res.length}</b><small>${hi.length+me.length} em risco</small><span class="tick"></span></div>`;
-    h+=`<div class="kpi"><label>Alto Risco</label><b style="color:var(--red)">${hi.length}</b><small>${me.length} médio risco</small><span class="tick"></span></div>`;
-    h+=`<div class="kpi"><label>Receita em Risco</label><b style="color:var(--red)">€${Math.round(totalRiskRev/1000)}<span style="font-size:24px;letter-spacing:0">K</span></b><small>probabilidade ponderada</small><span class="tick"></span></div>`;
-    h+=`<div class="kpi"><label>Overbooking</label><b style="color:var(--olive)">€${Math.round(obRev/1000)}<span style="font-size:24px;letter-spacing:0">K</span></b><small>${ob.length} dias · +${ob.reduce((s,o)=>s+o.ob,0)} quartos</small><span class="tick"></span></div>`;
+    h+=`<div class="kpi"><label>${t("kpi.activeReservations")}</label><b>${res.length}</b><small>${t("kpi.activeReservations.sub",{n:hi.length+me.length})}</small><span class="tick"></span></div>`;
+    h+=`<div class="kpi"><label>${t("kpi.highRisk")}</label><b style="color:var(--red)">${hi.length}</b><small>${t("kpi.highRisk.sub",{n:me.length})}</small><span class="tick"></span></div>`;
+    h+=`<div class="kpi"><label>${t("kpi.revAtRisk")}</label><b style="color:var(--red)">€${Math.round(totalRiskRev/1000)}<span style="font-size:24px;letter-spacing:0">K</span></b><small>${t("kpi.revAtRisk.sub")}</small><span class="tick"></span></div>`;
+    h+=`<div class="kpi"><label>${t("kpi.overbooking")}</label><b style="color:var(--olive)">€${Math.round(obRev/1000)}<span style="font-size:24px;letter-spacing:0">K</span></b><small>${t("kpi.overbooking.sub",{days:ob.length,rooms:ob.reduce((s,o)=>s+o.ob,0)})}</small><span class="tick"></span></div>`;
     h+=`</div>`;
 
     // Tabs
     h+=`<div class="tabs">`;
-    [{id:"timeline",l:"Timeline"},{id:"overbooking",l:"Overbooking"},{id:"retention",l:"Ações"},{id:"periods",l:"Períodos"},{id:"historico",l:"Histórico"},{id:"modelo",l:"Modelo"}].forEach(t=>{h+=`<button class="tab${state.tab===t.id?" on":""}" onclick="nexo.selectTab('${t.id}')">${t.l}</button>`});
-    h+=`<div class="nav"><button class="nbtn" onclick="nexo.prevDays()">◀</button><button class="nbtn on" onclick="nexo.goToday()">Hoje</button><button class="nbtn" onclick="nexo.nextDays()">▶</button>`;
-    [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${state.viewDays===d?" on":""}" onclick="nexo.setViewDays(${d})">${d}d</button>`});
+    [{id:"timeline",k:"tabs.timeline"},{id:"overbooking",k:"tabs.overbooking"},{id:"retention",k:"tabs.actions"},{id:"periods",k:"tabs.periods"},{id:"historico",k:"tabs.history"},{id:"modelo",k:"tabs.model"}].forEach(tab=>{h+=`<button class="tab${state.tab===tab.id?" on":""}" onclick="nexo.selectTab('${tab.id}')">${t(tab.k)}</button>`});
+    h+=`<div class="nav"><button class="nbtn" onclick="nexo.prevDays()">◀</button><button class="nbtn on" onclick="nexo.goToday()">${t("nav.today")}</button><button class="nbtn" onclick="nexo.nextDays()">▶</button>`;
+    [14,30,60,90].forEach(d=>{h+=`<button class="nbtn${state.viewDays===d?" on":""}" onclick="nexo.setViewDays(${d})">${t("nav.days",{n:d})}</button>`});
     h+=`</div></div><div class="content"><div class="main">`;
 
     // Timeline Tab
@@ -1126,7 +1144,7 @@ const nexo=(function(){
       h+=`<div class="risk" style="background:${bg}10;border:1px solid ${bg}20"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-size:10px;color:#86868B;font-weight:700;text-transform:uppercase;letter-spacing:1px">Probabilidade de cancelar</span></div><span class="sc" style="color:${bg}">${sel.prob||0}%</span></div><div style="background:#E5E5EA;border-radius:4px;height:6px;overflow:hidden;margin-top:8px"><div style="width:${sel.prob||0}%;height:100%;background:${pc};border-radius:4px"></div></div><div style="margin-top:8px;font-size:11px;color:#86868B">€${sel.riskRev||0} em risco de €${sel.total} total</div></div>`;
       h+=`<div style="padding:0 18px"><div class="section-title">Reserva</div>`;
       [{l:"Chegada",v:fmt(sel.arrival)+" ("+sel.daysUntil+"d)"},{l:"Saída",v:fmt(sel.departure)},{l:"Noites",v:sel.nights},{l:"Quarto",v:sel.roomType||sel.room},{l:"Rate",v:sel.rate},{l:"ADR",v:"€"+sel.adr},{l:"Total",v:"€"+sel.total},{l:"Canal",v:sel.source}].forEach(d=>{h+=`<div class="row"><label>${esc(d.l)}</label><span>${esc(d.v)}</span></div>`});
-      h+=`<div class="section-title">Hóspede</div>`;
+      h+=`<div class="section-title">${t("tl.section.guest")}</div>`;
       [{l:"Nacionalidade",v:sel.nationality||"—"},{l:"Email",v:sel.email||"—"},{l:"Telefone",v:sel.phone||"—"},{l:"Repetente",v:sel.previousStays>0?sel.previousStays+" estadias":"Novo"},{l:"Pagamento",v:sel.paymentStatus==="charged"?"Pago":sel.paymentStatus||"Pendente"}].forEach(d=>{h+=`<div class="row"><label>${esc(d.l)}</label><span>${esc(d.v)}</span></div>`});
       if(sel.factors&&sel.factors.length){h+=`<div class="section-title">Porquê este risco</div><div style="display:flex;flex-wrap:wrap;gap:4px;padding-bottom:12px">`;sel.factors.forEach(f=>{h+=`<span style="display:inline-block;font-size:11px;padding:3px 8px;border-radius:6px;background:#FF3B3010;color:#FF3B30;font-weight:500">${esc(f)}</span>`});h+=`</div>`}
       if(sel.level==="HIGH"||sel.level==="MEDIUM"){
@@ -1163,7 +1181,7 @@ const nexo=(function(){
       });
       h+=`</div>`
     });
-    h+=`</div></div><div class="legend"><span><i style="background:#FF3B30"></i>Alto risco</span><span><i style="background:#FF9500"></i>Médio</span><span><i style="background:#34C759"></i>Baixo</span><span><i style="background:#000"></i>NR+Pago</span><span><i style="background:#E8FF5B;border:1px dashed #8B9A00"></i>Overbooking</span></div></div>`;
+    h+=`</div></div><div class="legend"><span><i style="background:#FF3B30"></i>${t("tl.legend.high")}</span><span><i style="background:#FF9500"></i>${t("tl.legend.medium")}</span><span><i style="background:#34C759"></i>${t("tl.legend.low")}</span><span><i style="background:#000"></i>${t("tl.legend.nrPaid")}</span><span><i style="background:#E8FF5B;border:1px dashed #8B9A00"></i>${t("tl.legend.overbooking")}</span></div></div>`;
     return h
   }
 
@@ -1220,7 +1238,7 @@ const nexo=(function(){
       // Confidence + revenue metrics (two side by side)
       h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--rule)">`;
       h+=`<div style="padding:12px 14px;border-right:1px solid var(--rule)"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">Confiança ${confLabel}</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:${confColor};line-height:1">${o.combinedProb}<span style="font-size:12px">%</span></div></div>`;
-      h+=`<div style="padding:12px 14px"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">Receita extra</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--green);line-height:1">€${(o.avgRate*o.ob).toLocaleString("pt")}</div></div>`;
+      h+=`<div style="padding:12px 14px"><div style="font-family:JetBrains Mono,monospace;font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">${t("ob.extraRev")}</div><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--green);line-height:1">€${(o.avgRate*o.ob).toLocaleString(loc())}</div></div>`;
       h+=`</div>`;
 
       // Room categories (no truncation)
@@ -1248,7 +1266,7 @@ const nexo=(function(){
   function renderRetention(ret){
     let h=`<div class="tbl">`;
     h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-size:14px;font-weight:900;color:#000">${ret.length} reservas para contactar</div><div style="display:flex;gap:6px"><button class="btn act" onclick="nexo.bulkAddNotes()" ${state.uping?'disabled':''} style="font-size:10px;padding:5px 10px">Notas Mews</button><button class="btn" onclick="nexo.bulkAddTasks()" ${state.uping?'disabled':''} style="font-size:10px;padding:5px 10px;border-color:#FF950040;color:#FF9500">Tasks Mews</button></div></div>`;
-    h+=`<table><tr><th>#</th><th>Confiança</th><th>Hóspede</th><th>Chegada</th><th>Dias</th><th>€ em Risco</th><th>Ação</th></tr>`;
+    h+=`<table><tr><th>${t("ob.row.index")}</th><th>${t("ob.col.confidence")}</th><th>${t("ob.col.guest")}</th><th>${t("ob.col.arrival")}</th><th>${t("ob.col.days")}</th><th>${t("ob.col.revAtRisk")}</th><th>${t("ob.col.action")}</th></tr>`;
     ret.forEach((r,i)=>{
       const pc=probColor(r.prob);
       const wl=r.phone?waLink(r.phone,waMsg(r.level,r.guest,r.prop,r.arrival,r.nights,r.offer)):"";
@@ -1394,10 +1412,11 @@ const nexo=(function(){
   // what the model said, what actually happened, top risk factors).
   // Excludes backfill-v1 rows — /api/history already filters them.
   function historyVerdictChip(v){
-    if(v==="hit")         return `<span style="background:#0B8040;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">ACERTOU</span>`;
-    if(v==="false_alarm") return `<span style="background:#C0392B;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">FALSO ALARME</span>`;
-    if(v==="missed")      return `<span style="background:#E67E22;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">ESCAPOU</span>`;
-    return `<span style="background:#7F8C8D;color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">OK</span>`;
+    const mk=(bg,key)=>`<span style="background:${bg};color:#fff;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.02em">${t(key)}</span>`;
+    if(v==="hit")         return mk("#0B8040","history.verdict.hit");
+    if(v==="false_alarm") return mk("#C0392B","history.verdict.falseAlarm");
+    if(v==="missed")      return mk("#E67E22","history.verdict.missed");
+    return mk("#7F8C8D","history.verdict.stayedOk");
   }
 
   function historyProbBadge(p){
@@ -1406,9 +1425,12 @@ const nexo=(function(){
     return `<span style="background:${bg};color:#fff;padding:3px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-weight:800;font-size:11px">${pct}%</span>`;
   }
 
+  // Locale-aware short date. Follows the current language's BCP-47 tag
+  // from nexoI18n.locale() so "12 Abr 26" in PT, "12 Apr 26" in EN,
+  // "12. Apr. 26" in DE — toLocaleDateString picks the conventions.
   function fmtDate(d){
-    if(!d)return"—";
-    try{return new Date(d).toLocaleDateString("pt-PT",{day:"2-digit",month:"short",year:"2-digit"})}catch{return d}
+    if(!d)return t("common.dash");
+    try{return new Date(d).toLocaleDateString(loc(),{day:"2-digit",month:"short",year:"2-digit"})}catch{return d}
   }
 
   // Minimal HTML-entity escape for template-literal interpolation of
@@ -1422,13 +1444,13 @@ const nexo=(function(){
 
   function renderHistory(){
     if(state.historyLoading){
-      return `<div class="tbl" style="padding:40px;text-align:center;color:#666;font-family:Fraunces,serif;font-style:italic">A carregar histórico...</div>`;
+      return `<div class="tbl" style="padding:40px;text-align:center;color:#666;font-family:Fraunces,serif;font-style:italic">${t("history.loading")}</div>`;
     }
     const hst=state.history;
     if(!hst){
       return `<div class="tbl" style="padding:40px;text-align:center">
-        <p style="font-family:Fraunces,serif;font-style:italic;color:#666;margin-bottom:16px">Ainda não há dados.</p>
-        <button class="btn" onclick="nexo.loadHistory()" style="padding:8px 16px">Carregar histórico</button>
+        <p style="font-family:Fraunces,serif;font-style:italic;color:#666;margin-bottom:16px">${t("history.empty.placeholder")}</p>
+        <button class="btn" onclick="nexo.loadHistory()" style="padding:8px 16px">${t("history.empty.cta")}</button>
       </div>`;
     }
 
@@ -1449,25 +1471,25 @@ const nexo=(function(){
     h+=`<div style="display:flex;flex-direction:column;gap:12px">`;
 
     // Verdict filter chips
-    const chip=(id,label,count,color)=>{
+    const chip=(id,labelKey,count,color)=>{
       const on=state.historyVerdict===id;
-      return `<button onclick="nexo.setHistoryVerdict('${id}')" style="padding:6px 10px;border-radius:99px;border:${on?`2px solid ${color}`:"1px solid #ddd"};background:${on?color+"20":"#fff"};color:${on?color:"#333"};font-weight:${on?"800":"600"};font-size:11px;cursor:pointer;letter-spacing:.02em">${label} <span style="opacity:.7">${count}</span></button>`;
+      return `<button onclick="nexo.setHistoryVerdict('${id}')" style="padding:6px 10px;border-radius:99px;border:${on?`2px solid ${color}`:"1px solid #ddd"};background:${on?color+"20":"#fff"};color:${on?color:"#333"};font-weight:${on?"800":"600"};font-size:11px;cursor:pointer;letter-spacing:.02em">${t(labelKey)} <span style="opacity:.7">${count}</span></button>`;
     };
     h+=`<div style="display:flex;gap:6px;flex-wrap:wrap">
-      ${chip("all","Todos",totals.all,"#333")}
-      ${chip("hit","Acertos",totals.hit,"#0B8040")}
-      ${chip("false_alarm","Falsos alarmes",totals.false_alarm,"#C0392B")}
-      ${chip("missed","Escaparam",totals.missed,"#E67E22")}
-      ${chip("stayed_ok","OK baixo risco",totals.stayed_ok,"#7F8C8D")}
+      ${chip("all","history.filter.all",totals.all,"#333")}
+      ${chip("hit","history.filter.hit",totals.hit,"#0B8040")}
+      ${chip("false_alarm","history.filter.falseAlarm",totals.false_alarm,"#C0392B")}
+      ${chip("missed","history.filter.missed",totals.missed,"#E67E22")}
+      ${chip("stayed_ok","history.filter.stayedOk",totals.stayed_ok,"#7F8C8D")}
     </div>`;
 
     // Headline: hit rate on flagged reservations
     const flagged=totals.hit+totals.false_alarm;
     const hitRate=flagged>0?Math.round(100*totals.hit/flagged):null;
     h+=`<div style="padding:12px 14px;background:#F9F5E9;border:1px solid #E6DFCB;border-radius:4px;font-family:Fraunces,serif">
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:4px">Quando o modelo disse "vai cancelar"</div>
-      <div style="font-size:22px;font-weight:800;color:#1A1A1A">${hitRate===null?"—":hitRate+"%"} acertou</div>
-      <div style="font-size:11px;color:#666;margin-top:2px">${totals.hit} acertos em ${flagged} alarmes</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:4px">${t("history.headline.label")}</div>
+      <div style="font-size:22px;font-weight:800;color:#1A1A1A">${hitRate===null?t("common.dash"):t("history.headline.hitRate",{pct:hitRate})}</div>
+      <div style="font-size:11px;color:#666;margin-top:2px">${t("history.headline.breakdown",{hits:totals.hit,total:flagged})}</div>
     </div>`;
 
     // Retrospective disclosure. Live predictions and historical retro-
@@ -1475,23 +1497,23 @@ const nexo=(function(){
     // so the user isn't surprised when 95% of rows are "retro".
     if(totals.retrospective>0){
       h+=`<div style="padding:8px 12px;background:#EEF2F7;border:1px solid #D6DEE8;border-radius:4px;font-size:10.5px;color:#4A5568;line-height:1.5">
-        <strong>${totals.retrospective} retroactivas</strong> + ${totals.live} live. As retroactivas são reservas antigas re-pontuadas agora com o modelo activo — dizem "o que o modelo teria dito em ${fmtDate(hst.fetched_at)}", não o que disse no dia.
+        ${t("history.retro.banner",{retro:totals.retrospective,live:totals.live,date:fmtDate(hst.fetched_at)})}
       </div>`;
     }
 
     // Row list — virtual-ish scroll, natural overflow
     if(rows.length===0){
-      h+=`<div style="padding:24px;text-align:center;color:#999;font-style:italic;border:1px dashed #ddd;border-radius:4px">Nenhuma reserva corresponde ao filtro</div>`;
+      h+=`<div style="padding:24px;text-align:center;color:#999;font-style:italic;border:1px dashed #ddd;border-radius:4px">${t("history.list.empty")}</div>`;
     }else{
       h+=`<div style="max-height:70vh;overflow-y:auto;border:1px solid #E6DFCB;border-radius:4px;background:#fff">`;
       rows.forEach(r=>{
         const sel=selected && r.reservation_id===selected.reservation_id && r.snapshot_date===selected.snapshot_date;
         const rowBg=sel?"#FDF8E8":"#fff";
         const border=sel?"2px solid #E8FF5B":"1px solid #F0EBD8";
-        const retroDot=r.retrospective?`<span title="Retroactiva — re-pontuada agora" style="display:inline-block;width:6px;height:6px;background:#9CA3AF;border-radius:99px;margin-right:5px;vertical-align:middle"></span>`:"";
+        const retroDot=r.retrospective?`<span title="${t("history.retro.rowLabel")}" style="display:inline-block;width:6px;height:6px;background:#9CA3AF;border-radius:99px;margin-right:5px;vertical-align:middle"></span>`:"";
         h+=`<div onclick="nexo.selectHistoryRow('${r.reservation_id}','${r.snapshot_date}')" style="padding:10px 12px;border-bottom:${border};background:${rowBg};cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
           <div style="min-width:0">
-            <div style="font-weight:700;font-size:13px;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${retroDot}${escapeHtml(r.guest||"—")}</div>
+            <div style="font-weight:700;font-size:13px;color:#1A1A1A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${retroDot}${escapeHtml(r.guest||t("common.dash"))}</div>
             <div style="font-size:10.5px;color:#666;margin-top:2px">${escapeHtml(r.prop||"")} • ${fmtDate(r.arrival)}</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">
@@ -1507,7 +1529,7 @@ const nexo=(function(){
     // ─── RIGHT COLUMN: detail ───
     h+=`<div>`;
     if(!selected){
-      h+=`<div style="padding:60px;text-align:center;border:1px dashed #E6DFCB;border-radius:4px;color:#999;font-family:Fraunces,serif;font-style:italic">Selecciona uma reserva à esquerda</div>`;
+      h+=`<div style="padding:60px;text-align:center;border:1px dashed #E6DFCB;border-radius:4px;color:#999;font-family:Fraunces,serif;font-style:italic">${t("history.detail.selectPrompt")}</div>`;
     }else{
       h+=renderHistoryDetail(selected);
     }
@@ -1521,24 +1543,27 @@ const nexo=(function(){
     const pct=Math.round((r.predicted_prob||0)*100);
     const cancelled=r.outcome==="cancelled"||r.outcome==="no_show";
 
-    // Plain-language verdict headline — the whole point of the panel
-    let verdictBig="", verdictColor="", verdictExplain="";
+    // Plain-language verdict headline — the whole point of the panel.
+    // fateKey picks which suffix fills the {fate} placeholder in the
+    // explain templates ("was cancelled" vs "was a no-show").
+    const fateKey=r.outcome==="no_show"?"history.detail.hit.noShow":"history.detail.hit.cancelled";
+    let verdictTitle="", verdictColor="", verdictExplain="";
     if(r.verdict==="hit"){
-      verdictBig="Acertou";
+      verdictTitle=t("history.detail.hit.title");
       verdictColor="#0B8040";
-      verdictExplain=`Previu ${pct}% de probabilidade de cancelamento e a reserva ${r.outcome==="no_show"?"foi no-show":"foi cancelada"}.`;
+      verdictExplain=t("history.detail.hit.explain",{pct,fate:t(fateKey)});
     }else if(r.verdict==="false_alarm"){
-      verdictBig="Falso alarme";
+      verdictTitle=t("history.detail.falseAlarm.title");
       verdictColor="#C0392B";
-      verdictExplain=`Previu ${pct}% de probabilidade de cancelamento mas o hóspede apareceu e ficou.`;
+      verdictExplain=t("history.detail.falseAlarm.explain",{pct});
     }else if(r.verdict==="missed"){
-      verdictBig="Escapou";
+      verdictTitle=t("history.detail.missed.title");
       verdictColor="#E67E22";
-      verdictExplain=`Previu apenas ${pct}% — no limite do MEDIUM — e a reserva ${r.outcome==="no_show"?"foi no-show":"foi cancelada"}.`;
+      verdictExplain=t("history.detail.missed.explain",{pct,fate:t(fateKey)});
     }else{
-      verdictBig="Baixo risco confirmado";
+      verdictTitle=t("history.detail.stayedOk.title");
       verdictColor="#7F8C8D";
-      verdictExplain=`Previu ${pct}% de cancelamento e a reserva foi honrada.`;
+      verdictExplain=t("history.detail.stayedOk.explain",{pct});
     }
 
     let h=`<div style="border:1px solid #E6DFCB;border-radius:4px;background:#fff;padding:24px">`;
@@ -1546,52 +1571,53 @@ const nexo=(function(){
     // Retrospective banner — only when this specific row was re-scored
     if(r.retrospective){
       h+=`<div style="background:#EEF2F7;color:#4A5568;padding:8px 12px;border-radius:4px;font-size:11px;margin-bottom:14px;line-height:1.45">
-        <strong>Retroactiva.</strong> Esta reserva é anterior à ferramenta — o modelo activo foi aplicado agora aos dados históricos. A previsão abaixo é "o que o modelo diria se tivesse visto esta reserva em ${fmtDate(r.snapshot_date)}".
+        ${t("history.retro.detailBanner",{date:fmtDate(r.snapshot_date)})}
       </div>`;
     }
 
     // Headline
     h+=`<div style="border-bottom:1px solid #F0EBD8;padding-bottom:16px;margin-bottom:18px">
-      <div style="font-family:Fraunces,serif;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:${verdictColor};font-weight:800;margin-bottom:6px">${verdictBig}</div>
-      <div style="font-family:Fraunces,serif;font-size:26px;line-height:1.15;color:#1A1A1A;font-weight:600;margin-bottom:10px">${escapeHtml(r.guest||"—")}</div>
+      <div style="font-family:Fraunces,serif;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:${verdictColor};font-weight:800;margin-bottom:6px">${verdictTitle}</div>
+      <div style="font-family:Fraunces,serif;font-size:26px;line-height:1.15;color:#1A1A1A;font-weight:600;margin-bottom:10px">${escapeHtml(r.guest||t("common.dash"))}</div>
       <div style="font-family:Fraunces,serif;font-size:14px;color:#444;line-height:1.5">${verdictExplain}</div>
     </div>`;
 
     // Big prob + outcome
+    const actualLabel=cancelled?(r.outcome==="no_show"?t("history.detail.actual.noShow"):t("history.detail.actual.cancelled")):t("history.detail.actual.stayed");
     h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">`;
     h+=`<div style="padding:14px;background:#FBFAF4;border-radius:4px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px">O modelo disse</div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px">${t("history.detail.saidLabel")}</div>
       <div style="font-family:JetBrains Mono,monospace;font-size:32px;font-weight:800;color:${pct>=50?"#C0392B":pct>=38?"#E67E22":"#1A1A1A"}">${pct}%</div>
-      <div style="font-size:11px;color:#666;margin-top:2px">prob. de cancelamento • nível ${r.level}</div>
+      <div style="font-size:11px;color:#666;margin-top:2px">${t("history.detail.saidSub",{level:r.level||"—"})}</div>
     </div>`;
     h+=`<div style="padding:14px;background:${cancelled?"#FDEDEC":"#EAFAF1"};border-radius:4px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px">Realmente</div>
-      <div style="font-family:Fraunces,serif;font-size:22px;font-weight:700;color:${cancelled?"#C0392B":"#0B8040"}">${cancelled?(r.outcome==="no_show"?"Não apareceu":"Cancelou"):"Ficou"}</div>
-      <div style="font-size:11px;color:#666;margin-top:4px">${r.outcome_final_at?"em "+fmtDate(r.outcome_final_at):""}</div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:6px">${t("history.detail.actualLabel")}</div>
+      <div style="font-family:Fraunces,serif;font-size:22px;font-weight:700;color:${cancelled?"#C0392B":"#0B8040"}">${actualLabel}</div>
+      <div style="font-size:11px;color:#666;margin-top:4px">${r.outcome_final_at?t("history.detail.actual.on",{date:fmtDate(r.outcome_final_at)}):""}</div>
     </div>`;
     h+=`</div>`;
 
     // Reservation facts grid
     const fact=(label,val)=>`<div>
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:3px">${label}</div>
-      <div style="font-family:Fraunces,serif;font-size:14px;color:#1A1A1A">${val||"—"}</div>
+      <div style="font-family:Fraunces,serif;font-size:14px;color:#1A1A1A">${val||t("common.dash")}</div>
     </div>`;
     h+=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px 18px;margin-bottom:20px">`;
-    h+=fact("Propriedade",escapeHtml(r.prop||""));
-    h+=fact("Chegada",fmtDate(r.arrival));
-    h+=fact("Noites",r.nights);
-    h+=fact("Canal",escapeHtml(r.channel||""));
-    h+=fact("Tarifa",escapeHtml(r.rate||""));
-    h+=fact("ADR",r.adr?"€"+Math.round(r.adr):"—");
-    h+=fact("Total",r.total?"€"+Math.round(r.total):"—");
-    h+=fact("Lead time",r.lead_time_days!=null?r.lead_time_days+" dias":"—");
-    h+=fact("País",escapeHtml(r.country||""));
+    h+=fact(t("history.detail.facts.prop"),escapeHtml(r.prop||""));
+    h+=fact(t("history.detail.facts.arrival"),fmtDate(r.arrival));
+    h+=fact(t("history.detail.facts.nights"),r.nights);
+    h+=fact(t("history.detail.facts.channel"),escapeHtml(r.channel||""));
+    h+=fact(t("history.detail.facts.rate"),escapeHtml(r.rate||""));
+    h+=fact(t("history.detail.facts.adr"),r.adr?"€"+Math.round(r.adr):t("common.dash"));
+    h+=fact(t("history.detail.facts.total"),r.total?"€"+Math.round(r.total):t("common.dash"));
+    h+=fact(t("history.detail.facts.leadTime"),r.lead_time_days!=null?t("history.detail.facts.leadTime.value",{n:r.lead_time_days}):t("common.dash"));
+    h+=fact(t("history.detail.facts.country"),escapeHtml(r.country||""));
     h+=`</div>`;
 
     // Why the score was what it was
     if(r.top_factors && r.top_factors.length>0){
       h+=`<div style="border-top:1px solid #F0EBD8;padding-top:16px">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">Factores que mais pesaram</div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:8px">${t("history.detail.factors.title")}</div>
         <div style="display:flex;flex-direction:column;gap:6px">`;
       r.top_factors.forEach(f=>{
         h+=`<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:#FBFAF4;border-radius:3px;font-family:Fraunces,serif;font-size:13px">
@@ -1604,7 +1630,7 @@ const nexo=(function(){
 
     // Footer meta
     h+=`<div style="border-top:1px solid #F0EBD8;padding-top:12px;margin-top:20px;font-size:10px;color:#999;font-family:JetBrains Mono,monospace;display:flex;justify-content:space-between">
-      <span>Previsão feita em ${fmtDate(r.snapshot_date)}</span>
+      <span>${t("history.detail.footer.predictedOn",{date:fmtDate(r.snapshot_date)})}</span>
       <span>${escapeHtml(r.model_version||"")}</span>
     </div>`;
 
@@ -1620,8 +1646,8 @@ const nexo=(function(){
     h+=`<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;padding-bottom:14px;border-bottom:1px solid var(--ink)">`;
     h+=`<div><div style="font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--accent-ink);margin-bottom:4px">MODEL DASHBOARD</div><h2 style="font-family:Fraunces,serif;font-size:34px;font-weight:500;color:var(--ink);letter-spacing:-1px;line-height:.95">Estado do modelo</h2></div>`;
     h+=`<div style="display:flex;gap:8px">`;
-    h+=`<button class="btn" data-action="backfill" ${state.backfilling?"disabled":""} style="padding:8px 16px">${state.backfilling?"A importar...":"Importar histórico Mews"}</button>`;
-    h+=`<button class="btn api" data-action="retrain" ${state.retraining?"disabled":""} style="padding:8px 16px">${state.retraining?"A treinar...":"Forçar retreino"}</button>`;
+    h+=`<button class="btn" data-action="backfill" ${state.backfilling?"disabled":""} style="padding:8px 16px">${state.backfilling?t("model.backfilling"):t("model.backfill")}</button>`;
+    h+=`<button class="btn api" data-action="retrain" ${state.retraining?"disabled":""} style="padding:8px 16px">${state.retraining?t("model.retraining"):t("model.retrain")}</button>`;
     h+=`</div>`;
     h+=`</div>`;
 
@@ -1674,13 +1700,13 @@ const nexo=(function(){
     }
 
     if(state.modelLoading){
-      h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">A CARREGAR MÉTRICAS...</div>`;
+      h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">${t("model.loading").toUpperCase()}</div>`;
       h+=`</div>`;
       return h;
     }
 
     if(!m){
-      h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">SEM MODELO TREINADO — IMPORTA HISTÓRICO OU CLICA EM FORÇAR RETREINO</div>`;
+      h+=`<div style="padding:80px;text-align:center;color:var(--ink-3);font-family:JetBrains Mono,monospace;font-size:11px;letter-spacing:1px">${t("model.noData").toUpperCase()}</div>`;
       h+=`</div>`;
       return h;
     }
@@ -1820,7 +1846,7 @@ const nexo=(function(){
       }
       state.modelMetrics=await resp.json();
     }catch(e){
-      addLog("Métricas: "+e.message);
+      addLog(t("error.metricsLoad",{msg:e.message}));
       state.modelMetrics=null;
     }finally{
       state.modelLoading=false;render();
@@ -1843,7 +1869,7 @@ const nexo=(function(){
       }
       state.history=await resp.json();
     }catch(e){
-      addLog("Histórico: "+e.message);
+      addLog(t("error.historyLoad",{msg:e.message}));
       state.history=null;
     }finally{
       state.historyLoading=false;render();
@@ -1852,7 +1878,7 @@ const nexo=(function(){
 
   async function retrainModel(){
     if(state.retraining)return;
-    if(!confirm("Forçar retreino do modelo agora?\n\nIsto lê as predições fechadas dos últimos 12 meses, ajusta uma nova regressão logística, e substitui o modelo activo se o AUC melhorar."))return;
+    if(!confirm(t("confirm.retrain")))return;
     state.retraining=true;render();
     try{
       const resp=await fetch("/api/model",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
@@ -1860,16 +1886,21 @@ const nexo=(function(){
       if(!resp.ok){
         throw new Error(result.message||result.error||("HTTP "+resp.status));
       }
+      // Training result summary — we keep this compact and mostly
+      // technical, so it reuses the "Retrain" label word rather than a
+      // fully localised sentence template. Keeps the dictionary small.
+      const label=t("model.retrain").replace(/\s.*/,""); // first word only
       if(result.status==="skipped"){
-        addLog("Retreino: skipped — "+(result.reason||"sem dados"));
+        addLog(`${label}: skipped — ${result.reason||"no data"}`);
       }else{
-        addLog("Retreino: "+result.status+(result.promoted?" (promovido)":" (não promovido)")+" AUC="+(result.metrics?.auc?.toFixed(4)||"?"));
+        addLog(`${label}: ${result.status}${result.promoted?" (promoted)":" (not promoted)"} AUC=${result.metrics?.auc?.toFixed(4)||"?"}`);
       }
       // Reload metrics after training
       await loadModelMetrics();
     }catch(e){
-      addLog("Retreino falhou: "+e.message);
-      alert("Retreino falhou: "+e.message);
+      const msg=t("error.retrain",{msg:e.message});
+      addLog(msg);
+      alert(msg);
     }finally{
       state.retraining=false;render();
     }
@@ -2003,9 +2034,16 @@ const nexo=(function(){
         fetch("/api/history?minProb=0.18&limit=2000"+q,{headers:{"Accept":"application/json"}})
           .then(r=>r.json())
           .then(d=>{state.history=d})
-          .catch(e=>{addLog("Histórico: "+e.message);state.history=null})
+          .catch(e=>{addLog(t("error.historyLoad",{msg:e.message}));state.history=null})
           .finally(()=>{state.historyLoading=false;render()});
       }
+    },
+    // Language switching. Persists to localStorage via i18n.js and forces
+    // a full re-render so every t() call resolves against the new dict.
+    // A no-op if the target language equals the current one.
+    setLanguage:lg=>{
+      if(!window.nexoI18n)return;
+      if(window.nexoI18n.setLang(lg)){state.lang=lg;render()}
     }
   }
 })();
@@ -2027,6 +2065,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     else if(action==='retrain')nexo.retrainModel();
     else if(action==='backfill')nexo.backfillHistory();
     else if(action==='clear-cache')nexo.clearCacheAndReload();
+    else if(action==='set-lang')nexo.setLanguage(el.dataset.lang);
   });
 });
 </script>
