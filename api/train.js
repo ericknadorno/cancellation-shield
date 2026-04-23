@@ -197,27 +197,46 @@ export default async function handler(req, res) {
     const { error: insErr } = await sb.from("model_weights").insert(newRow);
     if (insErr) throw new Error(`Insert new weights failed: ${insErr.message}`);
 
-    // ─── 8. Promote atomically if improved ───
+    // ─── 8. Promote if improved ───
+    //
+    // The model_weights table has a partial unique index that enforces at
+    // most one row with is_active=true (model_weights_single_active). We
+    // CANNOT activate-new-first — the DB rejects dual-active even as a
+    // transient state with 23505 / "duplicate key value violates unique
+    // constraint". So: deactivate old first, then activate new, and on
+    // activation failure roll back (re-activate old) to avoid zero-active.
     let promoted = false;
     if (shouldPromote) {
-      // Activate the new model FIRST. If the subsequent deactivate fails we
-      // end up with dual-active (visible but recoverable), which is better
-      // than zero-active (silent fallback to hand-tuned with no alert).
-      const { error: actErr } = await sb
-        .from("model_weights")
-        .update({ is_active: true })
-        .eq("version", version);
-      if (actErr) throw new Error(`Activate new model failed: ${actErr.message}`);
-      promoted = true;
-
-      // Deactivate the old. Non-fatal: dual-active is preferable to zero-active.
       if (activeRow) {
         const { error: deactErr } = await sb
           .from("model_weights")
           .update({ is_active: false })
           .eq("version", activeRow.version);
-        if (deactErr) console.error("[train] deactivate of old model failed (dual-active, manual cleanup may be needed):", deactErr.message);
+        if (deactErr) throw new Error(`Deactivate old model failed: ${deactErr.message}`);
       }
+
+      const { error: actErr } = await sb
+        .from("model_weights")
+        .update({ is_active: true })
+        .eq("version", version);
+
+      if (actErr) {
+        console.error("[train] activate new model failed, attempting rollback:", actErr.message);
+        if (activeRow) {
+          const { error: rbErr } = await sb
+            .from("model_weights")
+            .update({ is_active: true })
+            .eq("version", activeRow.version);
+          if (rbErr) {
+            console.error("[train] CRITICAL: rollback also failed — ZERO ACTIVE MODELS:", rbErr.message);
+          } else {
+            console.error("[train] rollback succeeded — previous model is active again");
+          }
+        }
+        throw new Error(`Activate new model failed: ${actErr.message}`);
+      }
+
+      promoted = true;
     }
 
     // ─── 9. Snapshot into model_performance regardless ───
