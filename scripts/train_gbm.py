@@ -328,16 +328,31 @@ def get_active_model(sb: Client):
 
 
 def promote(sb: Client, new_version: str, old_version: str | None) -> None:
-    # Activate NEW first — on subsequent failure we end up dual-active
-    # (recoverable) rather than zero-active (silent fallback).
-    log(f"Activating {new_version}...")
-    sb.table("model_weights").update({"is_active": True}).eq("version", new_version).execute()
+    """Atomically swap the active model.
+
+    The model_weights table has a partial unique index that enforces at
+    most one is_active=true (model_weights_single_active). We CANNOT
+    activate-new-first: PostgREST rejects with 23505 even for a transient
+    dual-active state. So: deactivate old, activate new, and on activation
+    failure roll back (re-activate old) so we never end up zero-active.
+    """
     if old_version:
         log(f"Deactivating {old_version}...")
-        try:
-            sb.table("model_weights").update({"is_active": False}).eq("version", old_version).execute()
-        except Exception as e:
-            log(f"WARN: deactivate of {old_version} failed — dual-active state: {e}")
+        sb.table("model_weights").update({"is_active": False}).eq("version", old_version).execute()
+
+    log(f"Activating {new_version}...")
+    try:
+        sb.table("model_weights").update({"is_active": True}).eq("version", new_version).execute()
+    except Exception as act_err:
+        log(f"ERROR: activation of {new_version} failed: {act_err}")
+        if old_version:
+            log(f"ROLLBACK: re-activating {old_version}")
+            try:
+                sb.table("model_weights").update({"is_active": True}).eq("version", old_version).execute()
+                log(f"Rollback succeeded — {old_version} is active again")
+            except Exception as rb_err:
+                log(f"CRITICAL: rollback also failed — ZERO ACTIVE MODELS. Manual reconcile needed: {rb_err}")
+        raise
 
 
 def main() -> int:
