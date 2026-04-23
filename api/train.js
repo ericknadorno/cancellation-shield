@@ -49,7 +49,10 @@ const MIN_NEGATIVES = 20;
 const AUC_IMPROVEMENT_THRESHOLD = 0.005;
 
 // Training window: rows with outcome_final_at within this many days
-const TRAIN_WINDOW_DAYS = 365;
+// Matches scripts/train_gbm.py so both trainers see the same slice of
+// history and the AUC-improvement promotion threshold compares models
+// trained on the same data.
+const TRAIN_WINDOW_DAYS = 450;
 
 // L2 regularization strength
 const LAMBDA = 1.0;
@@ -203,23 +206,24 @@ export default async function handler(req, res) {
     // ─── 8. Promote atomically if improved ───
     let promoted = false;
     if (shouldPromote) {
-      // Deactivate current active
-      if (activeRow) {
-        const { error: deactErr } = await sb
-          .from("model_weights")
-          .update({ is_active: false })
-          .eq("version", activeRow.version);
-        if (deactErr) console.error("[train] deactivate failed:", deactErr.message);
-      }
-
-      // Activate new
+      // Activate the new model FIRST. If the subsequent deactivate fails we
+      // end up with dual-active (visible but recoverable), which is better
+      // than zero-active (silent fallback to hand-tuned with no alert).
       const { error: actErr } = await sb
         .from("model_weights")
         .update({ is_active: true })
         .eq("version", version);
       if (actErr) throw new Error(`Activate new model failed: ${actErr.message}`);
-
       promoted = true;
+
+      // Deactivate the old. Non-fatal: dual-active is preferable to zero-active.
+      if (activeRow) {
+        const { error: deactErr } = await sb
+          .from("model_weights")
+          .update({ is_active: false })
+          .eq("version", activeRow.version);
+        if (deactErr) console.error("[train] deactivate of old model failed (dual-active, manual cleanup may be needed):", deactErr.message);
+      }
     }
 
     // ─── 9. Snapshot into model_performance regardless ───

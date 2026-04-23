@@ -325,11 +325,16 @@ def get_active_model(sb: Client):
 
 
 def promote(sb: Client, new_version: str, old_version: str | None) -> None:
-    if old_version:
-        log(f"Deactivating {old_version}...")
-        sb.table("model_weights").update({"is_active": False}).eq("version", old_version).execute()
+    # Activate NEW first — on subsequent failure we end up dual-active
+    # (recoverable) rather than zero-active (silent fallback).
     log(f"Activating {new_version}...")
     sb.table("model_weights").update({"is_active": True}).eq("version", new_version).execute()
+    if old_version:
+        log(f"Deactivating {old_version}...")
+        try:
+            sb.table("model_weights").update({"is_active": False}).eq("version", old_version).execute()
+        except Exception as e:
+            log(f"WARN: deactivate of {old_version} failed — dual-active state: {e}")
 
 
 def main() -> int:

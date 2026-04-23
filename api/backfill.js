@@ -461,6 +461,7 @@ export default async function handler(req, res) {
   const endDate = body.endDate || new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
   const started = Date.now();
+  const HARD_LIMIT_MS = 55_000;
 
   try {
     const results = [];
@@ -472,6 +473,15 @@ export default async function handler(req, res) {
       : Object.keys(PROPERTY_TOKENS).filter(k => !!PROPERTY_TOKENS[k] && k !== "hq");
 
     for (const propKey of toProcess) {
+      if (Date.now() - started > HARD_LIMIT_MS) {
+        results.push({
+          status: "skipped",
+          property: propKey,
+          reason: "timeout_approaching",
+          elapsed_ms_when_skipped: Date.now() - started,
+        });
+        continue;
+      }
       try {
         const r = await importProperty(propKey, startDate, endDate);
         results.push(r);
@@ -481,6 +491,7 @@ export default async function handler(req, res) {
     }
 
     const total = results.reduce((s, r) => s + (r.imported || 0), 0);
+    const timeoutAborted = results.some(r => r.status === "skipped" && r.reason === "timeout_approaching");
     return res.status(200).json({
       status: "ok",
       duration_ms: Date.now() - started,
@@ -488,6 +499,7 @@ export default async function handler(req, res) {
       end_date: endDate,
       properties: results,
       total_imported: total,
+      timeout_aborted: timeoutAborted,
       hint: total > 100
         ? `Run POST /api/train next to fit the model on ${total} historical outcomes`
         : "Not enough data yet — try a wider date range or check Mews tokens"

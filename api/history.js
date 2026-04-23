@@ -110,6 +110,12 @@ export default async function handler(req, res) {
       if (page >= 20) break;  // 20k raw rows absolute ceiling
     }
 
+    const rawRowsConsidered = rows.length;
+    const truncated = rawRowsConsidered >= rawCap;
+    if (truncated) {
+      console.warn(`[history] truncated — raw rows ${rawRowsConsidered} hit rawCap=${rawCap}`);
+    }
+
     // Score the retrospective rows and shape every row for the client.
     // We compute prob once per row — O(N) where N = rows fetched — then
     // filter afterward. This is cheap: a logistic dot product is ~30
@@ -212,6 +218,8 @@ export default async function handler(req, res) {
       totals,
       min_prob: minProb,
       active_model_version: activeVersion,
+      truncated,
+      raw_rows_considered: rawRowsConsidered,
       fetched_at: new Date().toISOString()
     });
   } catch (err) {
