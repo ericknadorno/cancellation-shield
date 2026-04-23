@@ -1092,7 +1092,7 @@ const nexo=(function(){
       h+=`<button data-action="set-lang" data-lang="${lg}" style="padding:4px 8px;border:0;background:${on?"var(--ink)":"transparent"};color:${on?"var(--paper)":"var(--ink-3)"};font-family:inherit;font-size:inherit;letter-spacing:inherit;cursor:pointer;font-weight:${on?"800":"500"};${i>0?"border-left:1px solid var(--rule-2)":""}">${lg.toUpperCase()}</button>`;
     });
     h+=`</span></div><div class="btns">`;
-    ["ALL",...properties].forEach(p=>{h+=`<button class="btn${state.prop===p?" on":""}" onclick="nexo.selectProperty('${esc(p)}')">${esc(p==="ALL"?t("header.allProperties"):p)}</button>`});
+    ["ALL",...properties].forEach(p=>{h+=`<button class="btn${state.prop===p?" on":""}" data-action="select-property" data-prop="${esc(p)}">${esc(p==="ALL"?t("header.allProperties"):p)}</button>`});
     h+=`<button class="btn api" onclick="nexo.fetchFromMews()" ${state.uping?'disabled':''}>${t("header.refresh")}</button>`;
     h+=`<button class="btn grn" onclick="nexo.generateWeeklyReport()">${t("header.report")}</button>`;
     h+=`</div></div>`;
@@ -1678,8 +1678,8 @@ const nexo=(function(){
         // Debug row for empty results
         if(p.status==="empty"&&p.debug){
           h+=`<tr style="background:var(--paper)"><td colspan="8" style="padding:4px 12px;font-size:10px;color:var(--ink-3);font-style:italic">debug: total fetched ${p.debug.total_fetched_from_mews}, range [${p.debug.date_filter_start}, ${p.debug.date_filter_end}]`;
-          if(p.debug.sample_state_counts)h+=`, states ${JSON.stringify(p.debug.sample_state_counts)}`;
-          if(p.debug.sample_earliest_created)h+=`, earliest ${(p.debug.sample_earliest_created||"").slice(0,10)}, latest ${(p.debug.sample_latest_created||"").slice(0,10)}`;
+          if(p.debug.sample_state_counts)h+=`, states ${esc(JSON.stringify(p.debug.sample_state_counts))}`;
+          if(p.debug.sample_earliest_created)h+=`, earliest ${esc((p.debug.sample_earliest_created||"").slice(0,10))}, latest ${esc((p.debug.sample_latest_created||"").slice(0,10))}`;
           h+=`</td></tr>`;
         }
       });
@@ -2066,6 +2066,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     else if(action==='backfill')nexo.backfillHistory();
     else if(action==='clear-cache')nexo.clearCacheAndReload();
     else if(action==='set-lang')nexo.setLanguage(el.dataset.lang);
+    else if(action==='select-property')nexo.selectProperty(el.dataset.prop);
   });
 });
 </script>
