@@ -31,14 +31,30 @@ from features import (
     FEATURE_NAMES,
     LEAK_SAFE_FEATURE_NAMES,
     extract_feature_vector,
+    channel_bucket,
 )
 
 # Features actually fed to LightGBM. We train on the leak-safe subset (see
 # features.py) so the booster cannot cheat using pay/mod/modCount, which get
 # mutated by the cancellation event itself. Inference in lib/gbm.js reads the
-# model's own feature_names list, so it will correctly build a 24-long vector
-# at predict time and ignore the three leaky ones.
+# model's own feature_names list, so it will correctly build a matching
+# vector at predict time and ignore the leaky ones.
 TRAIN_FEATURE_NAMES = LEAK_SAFE_FEATURE_NAMES
+
+# Monotonic constraints. LightGBM uses these to force a learned function to
+# move only in the specified direction for a given feature. Encodes domain
+# knowledge, reduces overfit on small datasets, and makes predictions more
+# robust to distribution shift. Values: +1 prediction must increase with the
+# feature, -1 must decrease, 0 unconstrained (default).
+#
+#   lt     — score_lead_time returns higher values for longer lead times,
+#            and long-lead-time bookings cancel more often. (+1)
+#   repeat — score_repeat returns positive values only for customers who
+#            have cancelled before, so higher → higher cancel risk. (+1)
+#
+# Everything else stays unconstrained — e.g. `bookHour` is U-shaped (late-
+# night + early-morning both suspicious), so no monotonic pattern applies.
+MONOTONIC_CONSTRAINTS = {"lt": 1, "repeat": 1}
 
 # ─── CONFIG ───
 MIN_SAMPLES = 300              # below this we refuse to train
@@ -126,8 +142,15 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
 
     log(f"Fetched {len(rows)} closed predictions ({page + 1} pages)")
 
-    X, y = [], []
+    # Pass 1: collect valid (features, label) pairs and aggregate the cohort
+    # cancel-rate table as we go. Doing this in one pass is cheaper than two.
+    # The cohort table is keyed by f"{channel_bucket}_{arrival_month}" plus
+    # an "_all" entry for the global base rate — used as fallback for small
+    # cells (count < 30) by score_channel_month_rate.
+    pairs = []
     skipped = 0
+    cohort_counts = {}  # key -> {"cancels": int, "total": int}
+    all_counts = {"cancels": 0, "total": 0}
     for row in rows:
         features = row.get("features") or {}
         outcome = row.get("outcome")
@@ -138,9 +161,37 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
         else:
             skipped += 1
             continue
+        bucket = channel_bucket(features.get("source"))
+        arr_month = features.get("arrMonth") or 0
+        key = f"{bucket}_{arr_month}"
+        cell = cohort_counts.setdefault(key, {"cancels": 0, "total": 0})
+        cell["total"] += 1
+        all_counts["total"] += 1
+        if label == 1:
+            cell["cancels"] += 1
+            all_counts["cancels"] += 1
+        pairs.append((features, label))
+
+    # Finalise the cohort table. Converting to {"rate": float, "count": int}
+    # lets the JS/Python scorers do a single lookup with a guard on count.
+    cohort_rates = {
+        k: {"rate": v["cancels"] / v["total"], "count": v["total"]}
+        for k, v in cohort_counts.items()
+    }
+    cohort_rates["_all"] = {
+        "rate": (all_counts["cancels"] / all_counts["total"]) if all_counts["total"] else 0.0,
+        "count": all_counts["total"],
+    }
+    log(f"Cohort table: {len(cohort_counts)} (channel × month) cells, "
+        f"overall cancel rate {100 * cohort_rates['_all']['rate']:.1f}%")
+
+    # Pass 2: build X, y. Now that we have the cohort table, each row's
+    # channelMonthRate feature resolves against the same lookup the JS
+    # inferencer will use at predict time.
+    X, y = [], []
+    for features, label in pairs:
         try:
-            fv = extract_feature_vector(features)
-            # Only the leak-safe features go into the training matrix.
+            fv = extract_feature_vector(features, cohort_rates)
             X.append([fv[name] for name in TRAIN_FEATURE_NAMES])
             y.append(label)
         except Exception as e:
@@ -150,7 +201,7 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
     log(f"Built matrix: {len(X)} samples, {skipped} skipped "
         f"({len(TRAIN_FEATURE_NAMES)} leak-safe features / "
         f"{len(FEATURE_NAMES)} total scorers)")
-    return X, y
+    return X, y, cohort_rates
 
 
 def seeded_split(X: list, y: list, test_frac: float, seed: int):
@@ -228,7 +279,7 @@ def simplify_tree(node: dict) -> dict:
     }
 
 
-def export_model(booster: lgb.Booster, feature_names: list, metrics: dict, n_train: int) -> dict:
+def export_model(booster: lgb.Booster, feature_names: list, metrics: dict, n_train: int, cohort_rates: dict = None) -> dict:
     """Export a LightGBM booster to the JSON shape lib/gbm.js expects."""
     dump = booster.dump_model()
     trees = []
@@ -249,6 +300,10 @@ def export_model(booster: lgb.Booster, feature_names: list, metrics: dict, n_tra
         # that need sigmoid activation. Store this flag so the JS inferencer
         # knows to apply it.
         "apply_sigmoid": True,
+        # Cohort lookup table for the channelMonthRate feature. Empty dict
+        # when training with < MIN_COHORT_CELLS — scorer falls back to the
+        # global prior. See scoreChannelMonthRate in lib/features.js.
+        "cohort_rates": cohort_rates or {},
         "training": {
             "samples": n_train,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -281,7 +336,7 @@ def main() -> int:
     started = time.time()
     sb = get_client()
 
-    X, y = fetch_training_data(sb)
+    X, y, cohort_rates = fetch_training_data(sb)
     if len(X) < MIN_SAMPLES:
         log(f"Skipping: {len(X)} < {MIN_SAMPLES} samples minimum")
         return 0
@@ -299,9 +354,18 @@ def main() -> int:
     train_set = lgb.Dataset(X_tr, y_tr, feature_name=TRAIN_FEATURE_NAMES, free_raw_data=False)
     valid_set = lgb.Dataset(X_te, y_te, feature_name=TRAIN_FEATURE_NAMES, reference=train_set, free_raw_data=False)
 
+    # Build monotonic constraints as a positional list matching
+    # TRAIN_FEATURE_NAMES. Unconstrained features get 0. LightGBM accepts
+    # this as the `monotone_constraints` param.
+    mc_list = [MONOTONIC_CONSTRAINTS.get(name, 0) for name in TRAIN_FEATURE_NAMES]
+    train_params = dict(LGB_PARAMS)
+    train_params["monotone_constraints"] = mc_list
+    active_constraints = [f"{n}={MONOTONIC_CONSTRAINTS[n]:+d}" for n in TRAIN_FEATURE_NAMES if n in MONOTONIC_CONSTRAINTS]
+    log(f"Monotonic constraints: {', '.join(active_constraints) if active_constraints else 'none'}")
+
     log("Training LightGBM...")
     booster = lgb.train(
-        LGB_PARAMS,
+        train_params,
         train_set,
         num_boost_round=300,
         valid_sets=[valid_set],
@@ -330,9 +394,11 @@ def main() -> int:
     # Build export and upsert. The model's feature_names is the leak-safe
     # subset — lib/gbm.js builds its input vector from whatever list it sees
     # here, so the JS inferencer automatically skips pay/mod/modCount too.
+    # cohort_rates travels with the model so scoreChannelMonthRate resolves
+    # against the same lookup table used during training.
     model_json = export_model(booster, TRAIN_FEATURE_NAMES, {
         "auc": auc, "brier": brier, "log_loss": ll, "calibration_error": ece,
-    }, len(X_tr))
+    }, len(X_tr), cohort_rates)
 
     today_date = datetime.now(timezone.utc).date().isoformat()
     window_start_date = (datetime.now(timezone.utc) - timedelta(days=TRAIN_WINDOW_DAYS)).date().isoformat()
