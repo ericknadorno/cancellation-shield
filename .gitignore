@@ -1,0 +1,38 @@
+# ─── Secrets / env ───
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+supabase-*.json
+service-account*.json
+
+# ─── Node ───
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp.*
+
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# ─── IDE / OS ───
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# ─── Vercel ───
+.vercel/
+
+# ─── Build / logs ───
+*.log
+dist/
+build/

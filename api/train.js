@@ -15,6 +15,7 @@
 //   8. Writes a snapshot into `model_performance` regardless of promotion
 
 import { getServerClient } from "../lib/supabase.js";
+import { requireCronAuth } from "../lib/auth.js";
 import {
   LEAK_SAFE_FEATURE_NAMES,
   extractFeatureVector
@@ -68,14 +69,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "GET or POST only" });
   }
 
-  // Optional cron auth
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const header = req.headers.authorization || "";
-    if (header !== `Bearer ${cronSecret}`) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-  }
+  if (!requireCronAuth(req, res)) return;
 
   const startedAt = Date.now();
   const sb = getServerClient();

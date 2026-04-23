@@ -13,6 +13,7 @@
 //   anything else → other
 
 import { getServerClient } from "../lib/supabase.js";
+import { requireCronAuth } from "../lib/auth.js";
 
 const PROPERTY_TOKENS = {
   hq: process.env.MEWS_ACCESS_TOKEN_HQ,
@@ -113,15 +114,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "GET or POST only" });
   }
 
-  // Simple cron auth via VERCEL_CRON_SECRET header. Optional for now.
-  // When set, manual runs from the browser are blocked.
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const header = req.headers.authorization || "";
-    if (header !== `Bearer ${cronSecret}`) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-  }
+  if (!requireCronAuth(req, res)) return;
 
   const startedAt = Date.now();
 

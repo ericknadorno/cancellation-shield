@@ -167,6 +167,22 @@ export default async function handler(req, res) {
     return res.status(413).json({ error: "Too many reservations in one call (max 5000)" });
   }
 
+  // If the caller wants to override the active model via body, require auth.
+  // The normal flow (weights=null → load from DB) works without auth and is
+  // what the dashboard uses for live scoring.
+  if (weights !== undefined && weights !== null) {
+    const secret = (process.env.CRON_SECRET || "").trim();
+    if (!secret) {
+      return res.status(500).json({
+        error: "Cannot honour weights override: CRON_SECRET not configured"
+      });
+    }
+    const header = req.headers.authorization || "";
+    if (header !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: "weights override requires Bearer auth" });
+    }
+  }
+
   // Load active model weights from DB. Caller can override via `weights`.
   let activeWeights = weights || null;
   let modelVersion = "hand-tuned-v1";

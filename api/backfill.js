@@ -19,6 +19,7 @@
 
 import { getServerClient } from "../lib/supabase.js";
 import { applyCors } from "../lib/cors.js";
+import { requireCronAuth } from "../lib/auth.js";
 import { extractFeatureVector } from "../lib/features.js";
 
 const PROPERTY_TOKENS = {
@@ -441,18 +442,10 @@ async function importProperty(propKey, startDate, endDate) {
 export default async function handler(req, res) {
   if (!applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+  if (!requireCronAuth(req, res)) return;
 
   if (!CLIENT_TOKEN) {
     return res.status(500).json({ error: "MEWS_CLIENT_TOKEN not configured" });
-  }
-
-  // Optional auth for the backfill endpoint
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const header = req.headers.authorization || "";
-    if (header !== `Bearer ${cronSecret}`) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
   }
 
   const body = req.body || {};
