@@ -19,7 +19,6 @@
 
 import { getServerClient } from "../lib/supabase.js";
 import { applyCors } from "../lib/cors.js";
-import { requireCronAuth } from "../lib/auth.js";
 import { extractFeatureVector } from "../lib/features.js";
 
 const PROPERTY_TOKENS = {
@@ -439,10 +438,23 @@ async function importProperty(propKey, startDate, endDate) {
 
 // ─── HTTP HANDLER ───────────────────────────────────────
 
+// NOTE on auth: this endpoint is triggered by a human from the dashboard
+// (Modelo → Importar histórico). It is NOT a cron endpoint, so it cannot
+// require a Bearer secret — the dashboard runs in the user's browser and
+// shipping a secret to the browser is equivalent to no secret at all.
+//
+// applyCors still rejects requests whose Origin isn't in ALLOWED_ORIGINS,
+// so a random website cannot auto-trigger a backfill when a victim visits
+// it. A determined attacker with curl can hit this endpoint, but the
+// worst-case impact is a Mews API quota burn — the backfill never leaks
+// data back to the caller, it only upserts into our predictions table.
+//
+// If this endpoint ever starts doing destructive work or Mews token quota
+// matters, switch to a session-based dashboard auth (cookie-signed) rather
+// than reinstating Bearer.
 export default async function handler(req, res) {
   if (!applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
-  if (!requireCronAuth(req, res)) return;
 
   if (!CLIENT_TOKEN) {
     return res.status(500).json({ error: "MEWS_CLIENT_TOKEN not configured" });
