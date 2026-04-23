@@ -44,12 +44,15 @@ FEATURE_NAMES = [
 # lib/features.js. Excludes features whose values are set (or drastically
 # shifted) by the very act of cancelling:
 #
-#   pay      — paymentStatus flips to "fail" after cancellation voids charges.
-#   mod      — wasModified. A cancellation IS a modification.
-#   modCount — modificationCount. Same root cause.
+#   pay      — paymentStatus flips to "fail"/"failed" once Mews voids the charge after cancellation; pre-cancel it's "charged".
+#   mod      — wasModified. A cancellation IS a modification, so post-hoc always true for cancels.
+#   modCount — modificationCount. Same root cause as `mod` — bumps on cancel.
+#   adr      — orderItems/getAll returns voided items for cancelled reservations, so adr collapses to 0 for cancels and stays nonzero for stays.
+#   adrVsAvg — derived from adr, inherits the same leak.
+#   card     — res.CreditCardId is nulled when a reservation is cancelled and re-fetched, so hasCreditCard reads false for every cancel.
 #
-# Inference still uses the full 27-feature vector — only training is leak-safe.
-_LEAK_FEATURES = {"pay", "mod", "modCount"}
+# Inference still uses the full 30-feature vector — only training is leak-safe.
+_LEAK_FEATURES = {"pay", "mod", "modCount", "adr", "adrVsAvg", "card"}
 LEAK_SAFE_FEATURE_NAMES = [n for n in FEATURE_NAMES if n not in _LEAK_FEATURES]
 
 

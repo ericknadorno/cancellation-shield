@@ -105,8 +105,13 @@ def get_client() -> Client:
     return create_client(url, key)
 
 
-def fetch_training_data(sb: Client) -> tuple[list, list]:
-    """Return X (n × len(FEATURE_NAMES)) and y (length n) from the journal."""
+def fetch_training_data(sb: Client) -> list[tuple[dict, int]]:
+    """Return raw (features_dict, label) pairs from the journal.
+
+    No cohort, no X/y — cohort_rates is computed downstream from the TRAIN
+    split only (see build_cohort_rates) so test-row outcomes can't leak into
+    the lookup the model is trained against.
+    """
     window_start = (datetime.now(timezone.utc) - timedelta(days=TRAIN_WINDOW_DAYS)).date().isoformat()
 
     # We include ALL rows with outcomes (including backfill) for training.
@@ -142,15 +147,8 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
 
     log(f"Fetched {len(rows)} closed predictions ({page + 1} pages)")
 
-    # Pass 1: collect valid (features, label) pairs and aggregate the cohort
-    # cancel-rate table as we go. Doing this in one pass is cheaper than two.
-    # The cohort table is keyed by f"{channel_bucket}_{arrival_month}" plus
-    # an "_all" entry for the global base rate — used as fallback for small
-    # cells (count < 30) by score_channel_month_rate.
-    pairs = []
+    pairs: list[tuple[dict, int]] = []
     skipped = 0
-    cohort_counts = {}  # key -> {"cancels": int, "total": int}
-    all_counts = {"cancels": 0, "total": 0}
     for row in rows:
         features = row.get("features") or {}
         outcome = row.get("outcome")
@@ -161,6 +159,21 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
         else:
             skipped += 1
             continue
+        pairs.append((features, label))
+
+    log(f"Collected {len(pairs)} labelled pairs, {skipped} skipped")
+    return pairs
+
+
+def build_cohort_rates(pairs: list[tuple[dict, int]]) -> dict:
+    """Build the (channel_bucket × arrival_month) cancel-rate lookup from the
+    given pairs. Cell shape `{"rate": float, "count": int}` plus an "_all"
+    entry for the global base rate. MUST be called with the TRAIN split only —
+    using the full set leaks test-row outcomes into the table the model is
+    scored against."""
+    cohort_counts: dict = {}  # key -> {"cancels": int, "total": int}
+    all_counts = {"cancels": 0, "total": 0}
+    for features, label in pairs:
         bucket = channel_bucket(features.get("source"))
         arr_month = features.get("arrMonth") or 0
         key = f"{bucket}_{arr_month}"
@@ -170,10 +183,7 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
         if label == 1:
             cell["cancels"] += 1
             all_counts["cancels"] += 1
-        pairs.append((features, label))
 
-    # Finalise the cohort table. Converting to {"rate": float, "count": int}
-    # lets the JS/Python scorers do a single lookup with a guard on count.
     cohort_rates = {
         k: {"rate": v["cancels"] / v["total"], "count": v["total"]}
         for k, v in cohort_counts.items()
@@ -182,13 +192,13 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
         "rate": (all_counts["cancels"] / all_counts["total"]) if all_counts["total"] else 0.0,
         "count": all_counts["total"],
     }
-    log(f"Cohort table: {len(cohort_counts)} (channel × month) cells, "
-        f"overall cancel rate {100 * cohort_rates['_all']['rate']:.1f}%")
+    return cohort_rates
 
-    # Pass 2: build X, y. Now that we have the cohort table, each row's
-    # channelMonthRate feature resolves against the same lookup the JS
-    # inferencer will use at predict time.
+
+def build_feature_matrix(pairs: list[tuple[dict, int]], cohort_rates: dict) -> tuple[list, list, int]:
+    """Turn pairs into (X, y, skipped_count) using the given cohort table."""
     X, y = [], []
+    skipped = 0
     for features, label in pairs:
         try:
             fv = extract_feature_vector(features, cohort_rates)
@@ -197,29 +207,22 @@ def fetch_training_data(sb: Client) -> tuple[list, list]:
         except Exception as e:
             log(f"  skip row: {e}")
             skipped += 1
-
-    log(f"Built matrix: {len(X)} samples, {skipped} skipped "
-        f"({len(TRAIN_FEATURE_NAMES)} leak-safe features / "
-        f"{len(FEATURE_NAMES)} total scorers)")
-    return X, y, cohort_rates
+    return X, y, skipped
 
 
-def seeded_split(X: list, y: list, test_frac: float, seed: int):
-    """Deterministic split — same seed → same partition across runs."""
-    n = len(X)
+def seeded_split_pairs(pairs: list[tuple[dict, int]], test_frac: float, seed: int) -> tuple[list, list]:
+    """Deterministic split on raw pairs — same seed → same partition across
+    runs. Mirrors the old seeded_split(X, y) but keeps us operating on the
+    (features, label) tuples so build_cohort_rates can run on TRAIN only."""
+    n = len(pairs)
     rng = np.random.default_rng(seed)
     idx = rng.permutation(n)
     n_test = int(round(n * test_frac))
     test_idx = set(idx[:n_test].tolist())
-    X_tr, y_tr, X_te, y_te = [], [], [], []
+    train_pairs, test_pairs = [], []
     for i in range(n):
-        if i in test_idx:
-            X_te.append(X[i])
-            y_te.append(y[i])
-        else:
-            X_tr.append(X[i])
-            y_tr.append(y[i])
-    return np.array(X_tr), np.array(y_tr), np.array(X_te), np.array(y_te)
+        (test_pairs if i in test_idx else train_pairs).append(pairs[i])
+    return train_pairs, test_pairs
 
 
 def calibration_error(y_true, y_pred, n_buckets=10):
@@ -341,20 +344,33 @@ def main() -> int:
     started = time.time()
     sb = get_client()
 
-    X, y, cohort_rates = fetch_training_data(sb)
-    if len(X) < MIN_SAMPLES:
-        log(f"Skipping: {len(X)} < {MIN_SAMPLES} samples minimum")
+    pairs = fetch_training_data(sb)
+    if len(pairs) < MIN_SAMPLES:
+        log(f"Skipping: {len(pairs)} < {MIN_SAMPLES} samples minimum")
         return 0
-    n_pos = sum(y)
-    n_neg = len(y) - n_pos
+    n_pos = sum(label for _, label in pairs)
+    n_neg = len(pairs) - n_pos
     if n_pos < MIN_POSITIVES or n_neg < MIN_NEGATIVES:
         log(f"Skipping: positives={n_pos}, negatives={n_neg} — need ≥{MIN_POSITIVES}/{MIN_NEGATIVES}")
         return 0
 
     log(f"Class balance: {n_pos} positives / {n_neg} negatives ({100*n_pos/(n_pos+n_neg):.1f}% cancel rate)")
 
-    X_tr, y_tr, X_te, y_te = seeded_split(X, y, TEST_FRACTION, RANDOM_SEED)
-    log(f"Split: {len(X_tr)} train / {len(X_te)} test")
+    # Split BEFORE building the cohort table so test-row outcomes can't leak
+    # into the lookup the model is trained (and then evaluated) against.
+    train_pairs, test_pairs = seeded_split_pairs(pairs, TEST_FRACTION, RANDOM_SEED)
+    log(f"Split: {len(train_pairs)} train / {len(test_pairs)} test")
+
+    cohort_rates = build_cohort_rates(train_pairs)
+    log(f"Cohort table: {len(cohort_rates) - 1} cells (training-only), "
+        f"overall train cancel rate {100 * cohort_rates['_all']['rate']:.1f}%")
+
+    X_tr_list, y_tr_list, _ = build_feature_matrix(train_pairs, cohort_rates)
+    X_te_list, y_te_list, _ = build_feature_matrix(test_pairs, cohort_rates)
+    X_tr = np.array(X_tr_list)
+    y_tr = np.array(y_tr_list)
+    X_te = np.array(X_te_list)
+    y_te = np.array(y_te_list)
 
     train_set = lgb.Dataset(X_tr, y_tr, feature_name=TRAIN_FEATURE_NAMES, free_raw_data=False)
     valid_set = lgb.Dataset(X_te, y_te, feature_name=TRAIN_FEATURE_NAMES, reference=train_set, free_raw_data=False)
